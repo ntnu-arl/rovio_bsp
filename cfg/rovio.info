@@ -1,5 +1,13 @@
 ; You can partially override parameter set in this file by creating your own subset of parameter in a separate info-file and include it with:
 ; #include "/home/user/workspace/rovio/cfg/rovio_custom.info"
+Bsp
+{
+	cam_FoVx 90.0;				Camera horizontal Field-of-View
+	cam_FoVy 60.0;				Camera vertical Field-of-View
+	cam_FoVz 7.5;				Camera depth range Field-of-View
+	map_featureVisibilityThreshold 2;	Line-of-Sight octomap visibility threshold
+	bsp_Ts 0.1;				Propagation sampling time
+}
 Common
 {
 	doVECalibration true;		Should the camera-IMU extrinsics be calibrated online

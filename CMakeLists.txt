@@ -52,6 +52,10 @@ else()
   pkg_check_modules(YamlCpp REQUIRED yaml-cpp>=0.5)
 endif()
 
+#BSP_extra (enable accessing of occupancy map acquired from bsp_planner for feature visibility checking via raycasting)
+find_package(octomap REQUIRED) 
+include_directories(${OCTOMAP_INCLUDE_DIRS})
+link_directories(${OCTOMAP_LIBRARY_DIRS})
 
 ##################### Install ROS stuff #####################
 find_package(catkin REQUIRED COMPONENTS
@@ -67,21 +71,40 @@ find_package(catkin REQUIRED COMPONENTS
 	std_msgs
 	tf
 	rosbag
+	eigen_conversions	#BSP_extra
+	octomap_ros		#BSP_extra
+	octomap_msgs		#BSP_extra
+)
+
+#BSP_extras (rovio-specific states cast to message headers, enable transferring of filter state to/from bsp_planner)
+add_message_files(
+  DIRECTORY msg
+  FILES	BSP_Point2fMsg.msg
+	BSP_TrajectoryReferenceMsg.msg
+	BSP_RobocentricFeatureElementMsg.msg
+ 	BSP_FeatureSetManagerMsg.msg
+ 	BSP_StateMsg.msg
+ 	BSP_FilterStateMsg.msg
 )
 
 add_service_files(
   DIRECTORY srv
   FILES SrvResetToPose.srv
+	BSP_SrvSendFilterState.srv		#BSP_extra (bsp_planner communication)
+	BSP_SrvPropagateFilterState.srv		#BSP_extra (bsp_planner communication)
 )
 
 generate_messages(DEPENDENCIES
   std_msgs
   geometry_msgs
+  octomap_msgs	#BSP_extra (enable transferring of occupancy map from bsp_planner for feature visibility checking via raycasting)
 )
 
 catkin_package(
 	INCLUDE_DIRS include ${catkin_INCLUDE_DIRS}
     LIBRARIES ${PROJECT_NAME}
+	DEPENDS
+    	octomap	#BSP_extra (enable accessing of occupancy map acquired from bsp_planner for feature visibility checking via raycasting)
 	CATKIN_DEPENDS
 	lightweight_filtering
   	kindr
@@ -96,6 +119,9 @@ catkin_package(
 	tf
 	rosbag
   yaml_cpp_catkin
+	eigen_conversions	#BSP_extra
+	octomap_ros		#BSP_extra
+	octomap_msgs		#BSP_extra
 )
 
 include_directories(include ${catkin_INCLUDE_DIRS} ${YamlCpp_INCLUDE_DIRS})
@@ -107,8 +133,17 @@ else()
 endif()
 target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} ${YamlCpp_LIBRARIES} ${OpenMP_EXE_LINKER_FLAGS} ${OPENGL_LIBRARIES} ${GLUT_LIBRARY} ${GLEW_LIBRARY})
 
+#BSP: fix compiline with dependency prioritization
+add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_generate_messages_cpp)
+#BSP: fix compiling with dependency prioritization
+
 add_executable(rovio_node src/rovio_node.cpp)
 target_link_libraries(rovio_node ${PROJECT_NAME})
+
+#BSP_node
+add_executable(rovio_bsp_node src/rovio_bsp_node.cpp)
+target_link_libraries(rovio_bsp_node ${PROJECT_NAME} ${OCTOMAP_LIBRARIES})
+#BSP_node
 
 add_executable(rovio_rosbag_loader src/rovio_rosbag_loader.cpp)
 target_link_libraries(rovio_rosbag_loader ${PROJECT_NAME})

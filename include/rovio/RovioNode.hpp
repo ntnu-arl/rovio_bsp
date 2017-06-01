@@ -26,6 +26,14 @@
 *
 */
 
+/*
+ * This code has been modified from the original to implement the propagation
+ * steps and data transactions described as part of the Uncertainty-aware Receding
+ * Horizon Exploration and Mapping planner.
+ * 
+ * Authors of modifications: 2017, Christos Papachristos, University of Nevada, Reno
+ */
+
 #ifndef ROVIO_ROVIONODE_HPP_
 #define ROVIO_ROVIONODE_HPP_
 
@@ -54,6 +62,11 @@
 #include "rovio/CoordinateTransform/FeatureOutputReadable.hpp"
 #include "rovio/CoordinateTransform/YprOutput.hpp"
 #include "rovio/CoordinateTransform/LandmarkOutput.hpp"
+
+// Bsp: extension
+#include <tf/transform_listener.h>
+// Bsp: visualization extras
+#include <visualization_msgs/MarkerArray.h>
 
 namespace rovio {
 
@@ -172,6 +185,23 @@ class RovioNode{
   std::string camera_frame_;
   std::string imu_frame_;
 
+  // Bsp: node variables
+  ros::Time bsp_rootmap_stamp_;
+  uint32_t bsp_planning_seq_;
+  tf::TransformListener bsp_tl_;
+  tf::Vector3 bsp_T_;
+  tf::Quaternion bsp_Q_;
+  // Bsp: pack and send belief (filter) state
+  ros::ServiceServer BSP_servFilterState_;
+  // Bsp: get and propagate, then pack and send belief (filter) state
+  ros::ServiceServer BSP_servPropagateFilterState_;
+  // Bsp: visualization extras
+  ros::Publisher BSP_pubFrustum_;              
+  visualization_msgs::Marker BSP_frustumMsg_; 
+  ros::Publisher BSP_pubBearingArrows_;
+  visualization_msgs::Marker BSP_bearingArrow_;
+  visualization_msgs::MarkerArray BSP_bearingArrowArrayMsg_;
+
   /** \brief Constructor
    */
   RovioNode(ros::NodeHandle& nh, ros::NodeHandle& nh_private, std::shared_ptr<mtFilter> mpFilter)
@@ -192,12 +222,27 @@ class RovioNode{
     forcePatchPublishing_ = false;
     gotFirstMessages_ = false;
 
+    /*
+     * Bsp: switch subscriptions, advertising, services
+     */
+   if (mpFilter_->bspFilter_){
+    // Advertise topics
+    BSP_pubFrustum_ = nh_.advertise<visualization_msgs::Marker>("bsp_rovio/frustum",1);
+    BSP_pubBearingArrows_ = nh_.advertise<visualization_msgs::MarkerArray>("bsp_rovio/bearing_arrows",1);
+
+    // Bsp: get and propagate, then pack and send belief (filter) state
+    BSP_servPropagateFilterState_ = nh_.advertiseService("bsp_rovio/propagate_filter_state", &RovioNode::BSP_servPropagateFilterStateCallback, this);
+
+    bsp_rootmap_stamp_ = ros::Time(0);
+    bsp_planning_seq_ = 0;
+   }
+   else{
     // Subscribe topics
     subImu_ = nh_.subscribe("imu0", 1000, &RovioNode::imuCallback,this);
     subImg0_ = nh_.subscribe("cam0/image_raw", 1000, &RovioNode::imgCallback0,this);
     subImg1_ = nh_.subscribe("cam1/image_raw", 1000, &RovioNode::imgCallback1,this);
     subGroundtruth_ = nh_.subscribe("pose", 1000, &RovioNode::groundtruthCallback,this);
-
+    
     // Initialize ROS service servers.
     srvResetFilter_ = nh_.advertiseService("rovio/reset", &RovioNode::resetServiceCallback, this);
     srvResetToPoseFilter_ = nh_.advertiseService("rovio/reset_to_pose", &RovioNode::resetToPoseServiceCallback, this);
@@ -212,6 +257,13 @@ class RovioNode{
       pubExtrinsics_[camID] = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("rovio/extrinsics" + std::to_string(camID), 1 );
     }
     pubImuBias_ = nh_.advertise<sensor_msgs::Imu>("rovio/imu_biases", 1 );
+
+    // Bsp: pack and send belief (filter) state
+    BSP_servFilterState_ = nh_.advertiseService("rovio/send_filter_state", &RovioNode::BSP_servFilterStateCallback, this);
+    // Bsp: visualization extras
+    BSP_pubFrustum_ = nh_.advertise<visualization_msgs::Marker>("rovio/frustum",1);            
+    BSP_pubBearingArrows_ = nh_.advertise<visualization_msgs::MarkerArray>("rovio/bearing_arrows",1);
+   }
 
     // Handle coordinate frame naming
     map_frame_ = "/map";
@@ -307,6 +359,27 @@ class RovioNode{
     markerMsg_.color.r = 0.0;
     markerMsg_.color.g = 1.0;
     markerMsg_.color.b = 0.0;
+
+    // Bsp: visualization extras
+    BSP_frustumMsg_.header.frame_id = "/world";
+    BSP_frustumMsg_.ns = "frustum";
+    BSP_frustumMsg_.id = 1;
+    BSP_frustumMsg_.type = visualization_msgs::Marker::LINE_STRIP;
+    BSP_frustumMsg_.action = visualization_msgs::Marker::ADD;
+    BSP_frustumMsg_.scale.x = 0.015;
+    BSP_frustumMsg_.color.a = 1.0;
+    if (mpFilter_->bspFilter_){
+      BSP_frustumMsg_.color.r = 1.0;
+      BSP_frustumMsg_.color.b = 1.0;
+    }
+    else{
+      BSP_frustumMsg_.color.g = 1.0;
+    }
+    BSP_bearingArrow_.ns = "bearing_arrow";
+    BSP_bearingArrow_.type = visualization_msgs::Marker::ARROW;
+    BSP_bearingArrow_.action = visualization_msgs::Marker::ADD;
+    BSP_bearingArrow_.scale.y = 0.01;
+    BSP_bearingArrow_.scale.z = 0.01;
   }
 
   /** \brief Destructor
@@ -413,6 +486,437 @@ class RovioNode{
     }
 
     delete mpTestFilterState;
+  }
+
+  /** \brief Bsp: ROS service handler to pack and send belief (filter) state.
+  *
+  *  @param request  - \ref rovio::BSP_SrvSendFilterState::Request
+  *  @param response  - \ref rovio::BSP_SrvSendFilterState::Response
+  */
+  bool BSP_servFilterStateCallback(rovio::BSP_SrvSendFilterState::Request& request,
+                                   rovio::BSP_SrvSendFilterState::Response& response){
+
+    const mtFilterState& filterState = mpFilter_->safe_;
+    const mtState& state = mpFilter_->safe_.state_;
+    state.updateMultiCameraExtrinsics(&mpFilter_->multiCamera_);
+    const MXD& cov = mpFilter_->safe_.cov_;
+    imuOutputCT_.transformState(state,imuOutput_); 
+
+    rovio::BSP_StateMsg state_msg;
+    
+    state_msg.nMax = mtState::nMax_; 
+    //state_msg.nLevels = mtState::nLevels_; //not part of BSP_StateMsg
+    //state_msg.patchSize = mtState::patchSize_; //not part of BSP_StateMsg
+    state_msg.nCam = mtState::nCam_;
+    //state_msg.nPose = mtState::nPose_; //not part of BSP_StateMsg
+    tf::vectorEigenToMsg(state.WrWM(),state_msg.pos_WrWM);
+    tf::vectorEigenToMsg(state.MvM(),state_msg.vel_MvM);
+    tf::vectorEigenToMsg(state.acb(),state_msg.acb);
+    tf::vectorEigenToMsg(state.gyb(),state_msg.gyb);
+    const QPD& state_qWM = state.qWM();
+    tf::quaternionEigenToMsg(Eigen::Quaterniond(state_qWM.w(),state_qWM.x(),state_qWM.y(),state_qWM.z()),state_msg.att_qWM);
+    state_msg.vep_MrMC.resize(mtState::nCam_);
+    state_msg.vea_qCM.resize(mtState::nCam_);
+    for(unsigned int i=0; i<mtState::nCam_; ++i){
+      tf::vectorEigenToMsg(state.MrMC(i),state_msg.vep_MrMC.at(i));
+      const QPD& state_qCM_i = state.qCM(i);
+      tf::quaternionEigenToMsg(Eigen::Quaterniond(state_qCM_i.w(),state_qCM_i.x(),state_qCM_i.y(),state_qCM_i.z()),state_msg.vea_qCM.at(i));
+    }
+
+    std::vector<rovio::BSP_RobocentricFeatureElementMsg> robocentricFeatureElement_msgVec;
+    robocentricFeatureElement_msgVec.resize(mtState::nMax_);
+    for (unsigned int i=0;i<mtState::nMax_; ++i) {
+      if(filterState.fsm_.isValid_[i]){
+        const FeatureDistance& state_dep = state.dep(i);
+        const FeatureCoordinates& state_CfP = state.CfP(i);
+        //robocentricFeatureElement_msgVec.at(i).distance_type_enum = state_dep.getType();
+        robocentricFeatureElement_msgVec.at(i).p = state_dep.getDistance();
+	const cv::Point2f& state_CfP_c = state_CfP.get_c();
+        robocentricFeatureElement_msgVec.at(i).c.x = state_CfP_c.x;
+        robocentricFeatureElement_msgVec.at(i).c.y = state_CfP_c.y;
+	robocentricFeatureElement_msgVec.at(i).valid_c = state_CfP.valid_c_;
+	robocentricFeatureElement_msgVec.at(i).valid_nor = state_CfP.valid_nor_;
+        tf::quaternionEigenToMsg(Eigen::Quaterniond(state_CfP.nor_.q_.w(),state_CfP.nor_.q_.x(),state_CfP.nor_.q_.y(),state_CfP.nor_.q_.z()),robocentricFeatureElement_msgVec.at(i).q);
+	robocentricFeatureElement_msgVec.at(i).camID = filterState.fsm_.features_[i].mpCoordinates_->camID_;
+        robocentricFeatureElement_msgVec.at(i).warp_c_2d = {state_CfP.warp_c_(0,0), state_CfP.warp_c_(0,1), state_CfP.warp_c_(1,0), state_CfP.warp_c_(1,1)};
+	robocentricFeatureElement_msgVec.at(i).valid_warp_c = state_CfP.valid_warp_c_;
+        robocentricFeatureElement_msgVec.at(i).warp_nor_2d = {state_CfP.warp_nor_(0,0), state_CfP.warp_nor_(0,1), state_CfP.warp_nor_(1,0), state_CfP.warp_nor_(1,1)};
+	robocentricFeatureElement_msgVec.at(i).valid_warp_nor = state_CfP.valid_warp_nor_;
+	robocentricFeatureElement_msgVec.at(i).isWarpIdentity = state_CfP.isWarpIdentity_;
+	robocentricFeatureElement_msgVec.at(i).trackWarping = state_CfP.trackWarping_;			
+      }
+    }
+    state_msg.fea = robocentricFeatureElement_msgVec;
+
+    if(mpPoseUpdate_->inertialPoseIndex_ >=0){
+      const V3D IrIW = state.poseLin(mpPoseUpdate_->inertialPoseIndex_);
+      const QPD qWI = state.poseRot(mpPoseUpdate_->inertialPoseIndex_);
+      tf::vectorEigenToMsg(IrIW,state_msg.pop_IrIW);
+      tf::quaternionEigenToMsg(Eigen::Quaterniond(qWI.w(),qWI.x(),qWI.y(),qWI.z()),state_msg.poa_qWI);
+    }
+    //aux
+
+    rovio::BSP_FilterStateMsg filterState_msg;
+    filterState_msg.header.seq = 0;
+    filterState_msg.header.frame_id = imu_frame_;
+    filterState_msg.header.stamp = ros::Time(filterState.t_);
+    filterState_msg.t = filterState.t_;
+    //if (filterState.mode_==LWF::FilteringMode::ModeEKF) filterState_msg.mode=std::string("ModeEKF"); else if (filterState.mode_==LWF::FilteringMode::ModeUKF) filterState_msg.mode=std::string("ModeUKF"); else if (filterState.mode_==LWF::FilteringMode::ModeIEKF) filterState_msg.mode=std::string("ModeIEKF"); else filterState_msg.mode=std::string("Unknown"); //not part of BSP_FilterStateMsg
+    //filterState_msg.usePredictionMerge = filterState.usePredictionMerge_; //not part of BSP_FilterStateMsg
+    filterState_msg.state = state_msg;
+    tf::matrixEigenToMsg(filterState.cov_,filterState_msg.cov);
+    filterState_msg.fsm.maxIdx = filterState.fsm_.maxIdx_;
+    filterState_msg.fsm.isValid.resize(mtState::nMax_);
+    for (unsigned int i=0;i<mtState::nMax_; ++i)
+      filterState_msg.fsm.isValid.at(i) = filterState.fsm_.isValid_[i];
+    
+    MXD covSubMat;
+    for (unsigned int i=0;i<mtState::nMax_; ++i)
+      mpFilter_->bsp_featureParams_[i].getParams(i, filterState, mpFilter_->octree_);
+    mpFilter_->calcCovSubMat(filterState.cov_, covSubMat);
+    filterState_msg.opt_metric = mpFilter_->calcDopt(covSubMat);
+    filterState_msg.landmarks_pcl.clear();
+    for (unsigned int i=0; i<mtState::nMax_; ++i){
+      if (filterState.fsm_.isValid_[i]){
+	const V3D& e_landmark_pt = mpFilter_->bsp_featureParams_[i].bsp_w3D();
+        geometry_msgs::Point32 landmark_pt;
+        landmark_pt.x = e_landmark_pt.x();
+        landmark_pt.y = e_landmark_pt.y();
+        landmark_pt.z = e_landmark_pt.z();
+	filterState_msg.landmarks_pcl.push_back(landmark_pt);
+      }
+    }
+
+    response.filterState = filterState_msg;
+    return true;
+  }
+
+  /** \brief Bsp: ROS service handler to get and propagate, then pack and send belief (filter) state.
+  *
+  *  @param request  - \ref rovio::BSP_SrvPropagateFilterState::Request
+  *  @param response  - \ref BSP_SrvPropagateFilterState::Response
+  */
+  bool BSP_servPropagateFilterStateCallback(rovio::BSP_SrvPropagateFilterState::Request& request,
+                                            rovio::BSP_SrvPropagateFilterState::Response& response){
+    if (request.vecTrajectoryReferenceMsg.empty() || request.filterStateMsgInit.state.nMax!=mtState::nMax_ || request.filterStateMsgInit.state.nCam!=mtState::nCam_)
+      return false;
+
+    // 1: get data
+    std::string bsp_frame = request.vecTrajectoryReferenceMsg.at(0).header.frame_id;
+    /*
+     * Bsp: Have to get last available tf, because of tree-based ordering of planning steps (step2 will start at the end of step1, potentially in the future, where tf is unavailable).
+     */
+    try {
+      tf::StampedTransform bsp_tf;
+      bsp_tl_.lookupTransform(bsp_frame, imu_frame_, ros::Time(0), bsp_tf);
+      bsp_T_ = bsp_tf.getOrigin();
+      bsp_Q_ = bsp_tf.getRotation();
+    } catch (const tf::TransformException& ex) {
+      ROS_ERROR_STREAM("Error getting tf data: " << ex.what());
+      return false;
+    }
+    
+    mpFilter_->init_.t_ = request.filterStateMsgInit.t;
+    try{
+      bsp::msgToMatrixEigen(request.filterStateMsgInit.cov, mpFilter_->init_.cov_);
+    } catch (const std::runtime_error& ex) {
+      ROS_ERROR_STREAM("Error mapping std_msgs data to eigen: " << ex.what());
+      return false;
+    }
+
+    tf::vectorMsgToEigen(request.filterStateMsgInit.state.pos_WrWM, mpFilter_->init_.state_.WrWM());
+    tf::vectorMsgToEigen(request.filterStateMsgInit.state.vel_MvM, mpFilter_->init_.state_.MvM());
+    tf::vectorMsgToEigen(request.filterStateMsgInit.state.acb, mpFilter_->init_.state_.acb());
+    tf::vectorMsgToEigen(request.filterStateMsgInit.state.gyb, mpFilter_->init_.state_.gyb());
+    Eigen::Quaterniond e_qWM; tf::quaternionMsgToEigen(request.filterStateMsgInit.state.att_qWM, e_qWM); mpFilter_->init_.state_.qWM().setValues(e_qWM.w(),e_qWM.x(),e_qWM.y(),e_qWM.z());
+    for(int i=0;i<mtState::nCam_;++i){
+      tf::vectorMsgToEigen(request.filterStateMsgInit.state.vep_MrMC.at(i), mpFilter_->init_.state_.MrMC(i));
+      Eigen::Quaterniond e_qCM_i;
+      tf::quaternionMsgToEigen(request.filterStateMsgInit.state.vea_qCM.at(i), e_qCM_i);
+      mpFilter_->init_.state_.qCM(i).setValues(e_qCM_i.w(),e_qCM_i.x(),e_qCM_i.y(),e_qCM_i.z());
+    }
+
+    if(mpPoseUpdate_->inertialPoseIndex_ >=0){
+      tf::vectorMsgToEigen(request.filterStateMsgInit.state.pop_IrIW, mpFilter_->init_.state_.poseLin(mpPoseUpdate_->inertialPoseIndex_));
+      Eigen::Quaterniond e_qWI;
+      tf::quaternionMsgToEigen(request.filterStateMsgInit.state.poa_qWI, e_qWI);
+      mpFilter_->init_.state_.poseRot(mpPoseUpdate_->inertialPoseIndex_).setValues(e_qWI.w(),e_qWI.x(),e_qWI.y(),e_qWI.z());
+    }
+    init_state_.WrWM_ = mpFilter_->init_.state_.WrWM();
+    init_state_.qMW_ = mpFilter_->init_.state_.qWM().inverted();
+    
+    mpFilter_->init_.fsm_.maxIdx_ = request.filterStateMsgInit.fsm.maxIdx;
+    for (unsigned int i=0;i<mtState::nMax_; ++i){
+      mpFilter_->init_.fsm_.isValid_[i] = request.filterStateMsgInit.fsm.isValid.at(i);
+    } 
+    for (unsigned int i=0;i<mtState::nMax_; ++i) {
+      if(request.filterStateMsgInit.fsm.isValid.at(i)){
+	const rovio::BSP_RobocentricFeatureElementMsg& fea_i = request.filterStateMsgInit.state.fea.at(i);
+	FeatureDistance& init_state_dep = mpFilter_->init_.state_.dep(i);
+	//init_state_dep.setType(fea_i.distance_type_enum);
+	init_state_dep.setParameter(fea_i.p);
+        FeatureCoordinates& init_state_CfP = mpFilter_->init_.state_.CfP(i);
+	init_state_CfP.set_c(cv::Point2f(fea_i.c.x,fea_i.c.y), false);
+	init_state_CfP.set_nor(LWF::NormalVectorElement(QPD(fea_i.q.w,fea_i.q.x,fea_i.q.y,fea_i.q.z)), false);
+	init_state_CfP.valid_c_ = fea_i.valid_c;
+	init_state_CfP.valid_nor_ = fea_i.valid_nor;
+	mpFilter_->init_.fsm_.features_[i].mpCoordinates_->camID_ = request.filterStateMsgInit.state.fea.at(i).camID;
+        init_state_CfP.warp_c_ << fea_i.warp_c_2d.at(0),fea_i.warp_c_2d.at(1),fea_i.warp_c_2d.at(2),fea_i.warp_c_2d.at(3);
+        init_state_CfP.valid_warp_c_ = request.filterStateMsgInit.state.fea.at(i).valid_warp_c;
+	init_state_CfP.warp_nor_ << fea_i.warp_nor_2d.at(0),fea_i.warp_nor_2d.at(1),fea_i.warp_nor_2d.at(2),fea_i.warp_nor_2d.at(3);
+	init_state_CfP.valid_warp_nor_ = request.filterStateMsgInit.state.fea.at(i).valid_warp_nor;
+	init_state_CfP.isWarpIdentity_ = request.filterStateMsgInit.state.fea.at(i).isWarpIdentity;
+	init_state_CfP.trackWarping_ = request.filterStateMsgInit.state.fea.at(i).trackWarping;
+      }
+    }
+    //request.filterStateMsgInit.opt_metric; 
+
+    if (!request.filterStateMap.data.empty()){
+      /*
+       * Bsp: No need to re-acquire on every re-planning call, work with last available map 
+       */
+      if (bsp_rootmap_stamp_ < request.filterStateMap.header.stamp){
+	ROS_INFO("New filterStateMap data detected in bsp propagation request!");
+        if (mpFilter_->octree_ != nullptr)
+          mpFilter_->octree_->clear();
+        if (request.filterStateMap.binary){
+          // Bsp: The more efficient implementation will carry over only the binary map, depends on bsp_planner, depends on suggested volumetric planning modifications
+          mpFilter_->octree_ = dynamic_cast<octomap::OcTree*>( octomap_msgs::binaryMsgToMap(request.filterStateMap) );
+        }
+        else{
+          // Bsp: Handle the less efficient implementation 
+          mpFilter_->octree_ = dynamic_cast<octomap::OcTree*>( octomap_msgs::fullMsgToMap(request.filterStateMap) );
+        }
+        if (mpFilter_->octree_ == nullptr){
+          ROS_WARN("octomap_msgs::binaryMsgToMap() did not manage to derive a map...");
+        }
+	else{
+	  bsp_rootmap_stamp_ = request.filterStateMap.header.stamp;
+	  mpFilter_->octree_->prune();
+	}
+      }
+      else{
+        ROS_WARN("Old filterStateMap data detected in bsp propagation request...");
+      }
+    }
+    
+    // 2: propagate data
+    //requestReset();
+    requestResetToPose(init_state_.WrWM_, init_state_.qMW_);
+    //filterState.fsm_.allocateMissing(); 
+    mpFilter_->init_.fsm_.setAllCameraPointers(); //TODO: why after 1st bsp iteration state.CfP(i).mpCamera_!=nullptr for all features?
+    
+    sensor_msgs::Imu::Ptr predictionImu_msg = boost::make_shared<sensor_msgs::Imu>();
+    const unsigned int bsp_propSimLimit = 10/mpFilter_->bsp_Ts_;
+    for (int i=0; ; ++i){  
+      if (i>=bsp_propSimLimit){
+        ROS_ERROR("Waypoint NOT reached...");
+        break;
+      }
+      const rovio::BSP_TrajectoryReferenceMsg& trajectoryReference_msg = request.vecTrajectoryReferenceMsg.at(0);
+
+      const mtFilterState& filterState = mpFilter_->safe_;
+      const mtState& state = mpFilter_->safe_.state_;
+
+      const V3D pos_WrWM = state.WrWM();
+      const V3D vel_MvM = state.MvM();
+      const V3D acb = state.acb();
+      const V3D gyb = state.gyb();
+      const QPD att_qMW = state.qWM().inverted();
+      const tf::Vector3 tf_pos_WrWM(pos_WrWM.x(),pos_WrWM.y(),pos_WrWM.z());
+      const tf::Quaternion tf_att_qMW(att_qMW.x(),att_qMW.y(),att_qMW.z(),att_qMW.w());
+      tfScalar tf_att_qMW_roll, tf_att_qMW_pitch, tf_att_qMW_yaw;
+      tf::Matrix3x3(tf_att_qMW).getRPY(tf_att_qMW_roll,tf_att_qMW_pitch,tf_att_qMW_yaw);
+ 
+      const tf::Vector3 tf_pos_WrWM_ref(trajectoryReference_msg.pose.position.x,trajectoryReference_msg.pose.position.y,trajectoryReference_msg.pose.position.z);
+      const tf::Quaternion tf_att_qMW_ref(trajectoryReference_msg.pose.orientation.x,trajectoryReference_msg.pose.orientation.y,trajectoryReference_msg.pose.orientation.z,trajectoryReference_msg.pose.orientation.w);
+      tfScalar tf_att_qMW_roll_ref, tf_att_qMW_pitch_ref, tf_att_qMW_yaw_ref;  
+      tf::Matrix3x3(tf_att_qMW_ref).getRPY(tf_att_qMW_roll_ref,tf_att_qMW_pitch_ref,tf_att_qMW_yaw_ref);
+
+      tfScalar tf_att_qMW_roll_0, tf_att_qMW_pitch_0, tf_att_qMW_yaw_0;  
+      tf::Matrix3x3(bsp_Q_).getRPY(tf_att_qMW_roll_0,tf_att_qMW_pitch_0,tf_att_qMW_yaw_0);
+
+      tf_att_qMW_roll_ref = tf_att_qMW_roll_0;
+      tf_att_qMW_pitch_ref = tf_att_qMW_pitch_0;      
+      const tf::Vector3 tf_pos_WrWM_err = tf_pos_WrWM_ref - tf_pos_WrWM;
+      const tfScalar tf_att_qMW_roll_err = tf_att_qMW_roll_ref-tf_att_qMW_roll;
+      const tfScalar tf_att_qMW_pitch_err = tf_att_qMW_pitch_ref-tf_att_qMW_pitch;
+      const tfScalar tf_att_qMW_yaw_err = tf_att_qMW_yaw_ref-tf_att_qMW_yaw + (tf_att_qMW_yaw_err>M_PI) ? (-2.0*M_PI) : (tf_att_qMW_yaw_err<-M_PI ? 2.0*M_PI : 0);
+
+      if (tf_pos_WrWM_err.length2()<=0.0025 && vel_MvM.squaredNorm()<=0.01 && tf_att_qMW_yaw_err<=0.017453293){
+        ROS_INFO("Waypoint reached!");
+        break;
+      }
+
+      const tf::Vector3 tf_pos_WrWM_err_BFF = tf::Transform(tf_att_qMW,tf::Vector3(0.0,0.0,0.0)).inverse()*tf_pos_WrWM_err;
+      const tf::Vector3 predictionAcc_BFF = tf::Vector3( 1.0 * tf_pos_WrWM_err_BFF.getX(), 1.0 * tf_pos_WrWM_err_BFF.getY(), 1.0 * tf_pos_WrWM_err_BFF.getZ() ); 
+      const tf::Vector3 gAcc_BFF = tf::Transform(tf_att_qMW,tf::Vector3(0.0,0.0,0.0)).inverse()*tf::Vector3(0.0,0.0,9.81);
+
+      const double acc_max = sin(15.0*0.017453293)*9.81;
+      const double gyr_max = 0.75;
+      predictionImu_msg->header.frame_id = "body";
+      predictionImu_msg->header.stamp = ros::Time(mpFilter_->init_.t_ + mpFilter_->bsp_Ts_*i);
+      predictionImu_msg->linear_acceleration.x = acb.x() + gAcc_BFF.getX() + std::min( std::max(-acc_max , predictionAcc_BFF.getX()) , acc_max ) + 2.0*vel_MvM.x();
+      predictionImu_msg->linear_acceleration.y = acb.y() + gAcc_BFF.getY() + std::min( std::max(-acc_max , predictionAcc_BFF.getY()) , acc_max ) + 2.0*vel_MvM.y(); 
+      predictionImu_msg->linear_acceleration.z = acb.z() + gAcc_BFF.getZ() + std::min( std::max(-acc_max , predictionAcc_BFF.getZ()) , acc_max ) + 2.0*vel_MvM.z();
+      predictionImu_msg->angular_velocity.x = -gyb.x() + 1.0 * tf_att_qMW_roll_err;
+      predictionImu_msg->angular_velocity.y = -gyb.y() + 1.0 * tf_att_qMW_pitch_err;
+      predictionImu_msg->angular_velocity.z = -gyb.z() + 1.0 * tf_att_qMW_yaw_err;
+      predictionImu_msg->angular_velocity.x = std::min( std::max(-gyr_max , predictionImu_msg->angular_velocity.x) , gyr_max);
+      predictionImu_msg->angular_velocity.y = std::min( std::max(-gyr_max , predictionImu_msg->angular_velocity.y) , gyr_max);
+      predictionImu_msg->angular_velocity.z = std::min( std::max(-gyr_max , predictionImu_msg->angular_velocity.z) , gyr_max);
+      
+      imuCallback(predictionImu_msg);
+      BSP_landmarkCallback();
+    }
+
+    // 2: pack and send data
+    mtFilterState& filterState = mpFilter_->safe_;
+    mtState& state = mpFilter_->safe_.state_;
+    state.updateMultiCameraExtrinsics(&mpFilter_->multiCamera_);
+    MXD& cov = mpFilter_->safe_.cov_;
+    imuOutputCT_.transformState(state,imuOutput_);
+
+    ros::Time filterState_stamp = ros::Time(filterState.t_);
+
+    rovio::BSP_StateMsg state_msg;
+    
+    state_msg.nMax = state.nMax_; 
+    //state_msg.nLevels = state.nLevels_;
+    //state_msg.patchSize = state.patchSize_;
+    state_msg.nCam = state.nCam_;
+    //state_msg.nPose = state.nPose_;
+    tf::vectorEigenToMsg(state.WrWM(),state_msg.pos_WrWM);
+    tf::vectorEigenToMsg(state.MvM(),state_msg.vel_MvM);
+    tf::vectorEigenToMsg(state.acb(),state_msg.acb);
+    tf::vectorEigenToMsg(state.gyb(),state_msg.gyb);
+    tf::quaternionEigenToMsg(Eigen::Quaterniond(state.qWM().w(),state.qWM().x(),state.qWM().y(),state.qWM().z()),state_msg.att_qWM);
+    state_msg.vep_MrMC.resize(mtState::nCam_);
+    state_msg.vea_qCM.resize(mtState::nCam_);
+    for(int i=0;i<mtState::nCam_;++i){
+      tf::vectorEigenToMsg(state.MrMC(i),state_msg.vep_MrMC.at(i));
+      const QPD& state_qCM_i = state.qCM(i);
+      tf::quaternionEigenToMsg(Eigen::Quaterniond(state_qCM_i.w(),state_qCM_i.x(),state_qCM_i.y(),state_qCM_i.z()),state_msg.vea_qCM.at(i));
+    }
+
+    std::vector<rovio::BSP_RobocentricFeatureElementMsg> robocentricFeatureElement_msgVec;
+    robocentricFeatureElement_msgVec.resize(mtState::nMax_); 
+    for (unsigned int i=0;i<mtState::nMax_; ++i) {
+      if (request.filterStateMsgInit.fsm.isValid.at(i)){
+	const FeatureDistance& state_dep = state.dep(i);
+        /*const*/ FeatureCoordinates& state_CfP = state.CfP(i);
+	double lmrk_d = state_dep.getDistance();
+	Eigen::Quaterniond lmrk_q(state_CfP.nor_.q_.w(),state_CfP.nor_.q_.x(),state_CfP.nor_.q_.y(),state_CfP.nor_.q_.z());
+	robocentricFeatureElement_msgVec.at(i).p = lmrk_d; 
+        tf::quaternionEigenToMsg(lmrk_q,robocentricFeatureElement_msgVec.at(i).q);
+        const LWF::NormalVectorElement& lmrk_nor = LWF::NormalVectorElement( QPD(lmrk_q.w(),lmrk_q.x(),lmrk_q.y(),lmrk_q.z()) );
+        state_CfP.set_nor(lmrk_nor,false); //also sets valid_nor_ and unsets valid_c_
+	//TODO: Could avoid 2x-checking if bearing depth is behind the camera, check also happens at get_c() call time, leave for now
+	if (lmrk_nor.getVec()(2)<=0){
+	  robocentricFeatureElement_msgVec.at(i).c.x = -1;
+          robocentricFeatureElement_msgVec.at(i).c.y = -1;
+	}
+        else{
+	  const cv::Point2f& state_CfP_c = state_CfP.get_c(); //also calls com_c_ which checks valid_nor_ and sets valid_c_
+          robocentricFeatureElement_msgVec.at(i).c.x = state_CfP_c.x;
+          robocentricFeatureElement_msgVec.at(i).c.y = state_CfP_c.y;
+        }
+	robocentricFeatureElement_msgVec.at(i).valid_nor = state_CfP.valid_nor_;
+	robocentricFeatureElement_msgVec.at(i).valid_c = state_CfP.valid_c_;
+	robocentricFeatureElement_msgVec.at(i).camID = filterState.fsm_.features_[i].mpCoordinates_->camID_;
+        robocentricFeatureElement_msgVec.at(i).warp_c_2d = {state_CfP.warp_c_(0,0), state_CfP.warp_c_(0,1), state_CfP.warp_c_(1,0), state_CfP.warp_c_(1,1)};
+	robocentricFeatureElement_msgVec.at(i).valid_warp_c = state_CfP.valid_warp_c_;
+        robocentricFeatureElement_msgVec.at(i).warp_nor_2d = {state_CfP.warp_nor_(0,0), state_CfP.warp_nor_(0,1), state_CfP.warp_nor_(1,0), state_CfP.warp_nor_(1,1)};
+	robocentricFeatureElement_msgVec.at(i).valid_warp_nor = state_CfP.valid_warp_nor_;
+	robocentricFeatureElement_msgVec.at(i).isWarpIdentity = state_CfP.isWarpIdentity_;
+	robocentricFeatureElement_msgVec.at(i).trackWarping = state_CfP.trackWarping_;
+      }
+    }
+    state_msg.fea = robocentricFeatureElement_msgVec;
+
+    if(mpPoseUpdate_->inertialPoseIndex_ >=0){
+      Eigen::Vector3d IrIW = state.poseLin(mpPoseUpdate_->inertialPoseIndex_);
+      QPD qWI = state.poseRot(mpPoseUpdate_->inertialPoseIndex_);
+      tf::vectorEigenToMsg(IrIW,state_msg.pop_IrIW);
+      tf::quaternionEigenToMsg(Eigen::Quaterniond(qWI.w(),qWI.x(),qWI.y(),qWI.z()),state_msg.poa_qWI);
+    }
+    //aux
+
+    rovio::BSP_FilterStateMsg filterState_msg;
+    filterState_msg.header.seq = bsp_planning_seq_;
+    filterState_msg.header.frame_id = imu_frame_;
+    filterState_msg.header.stamp = filterState_stamp;
+    filterState_msg.t = filterState.t_;
+    //if (filterState.mode_==LWF::FilteringMode::ModeEKF) filterState_msg.mode=std::string("ModeEKF"); else if (filterState.mode_==LWF::FilteringMode::ModeUKF) filterState_msg.mode=std::string("ModeUKF"); else if (filterState.mode_==LWF::FilteringMode::ModeIEKF) filterState_msg.mode=std::string("ModeIEKF"); else filterState_msg.mode=std::string("Unknown");
+    //filterState_msg.usePredictionMerge = filterState.usePredictionMerge_;
+    filterState_msg.state = state_msg;
+    tf::matrixEigenToMsg(filterState.cov_,filterState_msg.cov);
+    filterState_msg.fsm.maxIdx = filterState.fsm_.maxIdx_;
+    filterState_msg.fsm.isValid.resize(mtState::nMax_);
+    for (unsigned int i=0;i<mtState::nMax_; ++i)
+      filterState_msg.fsm.isValid.at(i) = filterState.fsm_.isValid_[i];
+    
+    MXD covSubMat;
+    mpFilter_->calcCovSubMat(filterState.cov_, covSubMat);
+    filterState_msg.opt_metric = mpFilter_->calcDopt(covSubMat);
+    filterState_msg.landmarks_pcl = request.filterStateMsgInit.landmarks_pcl; //TODO: not pass entire landmarks_pcl from planning state to planning state 
+
+    response.filterStateMsgFinal = filterState_msg;
+
+    response.filterStateMap_stamp = bsp_rootmap_stamp_;
+
+    return true;
+  }
+
+  /** \brief Bsp: Callback for Landmark-Messages.
+   */
+  void BSP_landmarkCallback(){
+    std::lock_guard<std::mutex> lock(m_filter_);
+    if(init_state_.isInitialized()){
+      mtFilterState& filterState = mpFilter_->safe_;
+      mtState& state = mpFilter_->safe_.state_;
+
+      ros::Time filterState_stamp = ros::Time::now();
+
+      // Bsp: data respective to belief (filter) state
+      for (unsigned int i=0;i<mtState::nMax_; ++i)
+        mpFilter_->bsp_featureParams_[i].getParams(i, filterState, mpFilter_->octree_);
+
+      Eigen::MatrixXd H = Eigen::MatrixXd::Zero(2,mtState::D_);
+      rovio::FeatureOutput featureOutput;
+      cv::Point2f c_temp;
+      Eigen::Matrix2d c_J;
+
+      Eigen::MatrixXd Hn = Eigen::Matrix2d::Identity();
+      const double updateNoisePix = 2.0;
+      Eigen::Matrix2d updnoiP =  updateNoisePix * Eigen::Matrix2d::Identity();
+    
+      for(unsigned int i=0 ; i<mtState::nMax_; ++i){
+        if(filterState.fsm_.isValid_[i]){  
+          const unsigned int& camID = state.CfP(i).camID_;
+          int activeCamCounter = state.aux().activeCameraCounter_;
+          const unsigned int activeCamID = (activeCamCounter + camID)%mtState::nCam_;
+          transformFeatureOutputCT_.setFeatureID(i);
+          transformFeatureOutputCT_.setOutputCameraID(activeCamID);
+          transformFeatureOutputCT_.transformState(state,featureOutput);
+      
+          filterState.fsm_.mpMultiCamera_->cameras_[activeCamID].bearingToPixel(featureOutput.c().get_nor(),c_temp,c_J);
+
+          MXD::Index fea_idx = mtFilter::fea_0_idx_ + mtFilter::triplet_*i;
+          H = Eigen::MatrixXd::Zero(2,mtState::D_); 
+          H.block(0,fea_idx,2,2) = -c_J;
+      
+          Eigen::MatrixXd Pyinv;
+          Eigen::MatrixXd K;
+      
+          Eigen::MatrixXd Py = H*filterState.cov_*H.transpose() + Hn*updnoiP*Hn.transpose();
+          Pyinv = Py.inverse(); 
+          K = filterState.cov_ * H.transpose() * Pyinv;
+          filterState.cov_ = filterState.cov_ - K*Py*K.transpose();
+          filterState.cov_ = 0.5*(filterState.cov_+filterState.cov_.transpose()).eval();
+        }
+      }
+    }
   }
 
   /** \brief Callback for IMU-Messages. Adds IMU measurements (as prediction measurements) to the filter.
@@ -608,6 +1112,28 @@ class RovioNode{
         MXD& cov = mpFilter_->safe_.cov_;
         imuOutputCT_.transformState(state,imuOutput_);
 
+       if (mpFilter_->bspFilter_){
+    	// Send IMU pose.
+        tf::StampedTransform tf_transform_MW;
+        tf_transform_MW.frame_id_ = world_frame_;
+        tf_transform_MW.child_frame_id_ = imu_frame_ + "_bsp";
+        tf_transform_MW.stamp_ = ros::Time::now();
+        tf_transform_MW.setOrigin(tf::Vector3(imuOutput_.WrWB()(0),imuOutput_.WrWB()(1),imuOutput_.WrWB()(2)));
+        tf_transform_MW.setRotation(tf::Quaternion(imuOutput_.qBW().x(),imuOutput_.qBW().y(),imuOutput_.qBW().z(),imuOutput_.qBW().w()));
+        tb_.sendTransform(tf_transform_MW);
+
+        // Send camera pose.
+        for(int camID=0;camID<mtState::nCam_;camID++){
+          tf::StampedTransform tf_transform_CM;
+          tf_transform_CM.frame_id_ = imu_frame_ + "_bsp";
+          tf_transform_CM.child_frame_id_ = camera_frame_ + std::to_string(camID) + "_bsp";
+          tf_transform_CM.stamp_ = ros::Time::now();
+          tf_transform_CM.setOrigin(tf::Vector3(state.MrMC(camID)(0),state.MrMC(camID)(1),state.MrMC(camID)(2)));
+          tf_transform_CM.setRotation(tf::Quaternion(state.qCM(camID).x(),state.qCM(camID).y(),state.qCM(camID).z(),state.qCM(camID).w()));
+          tb_.sendTransform(tf_transform_CM);
+        }
+       }
+       else{
         // Cout verbose for pose measurements
         if(mpImgUpdate_->verbose_){
           if(mpPoseUpdate_->inertialPoseIndex_ >=0){
@@ -654,6 +1180,7 @@ class RovioNode{
           tf_transform_CM.setRotation(tf::Quaternion(state.qCM(camID).x(),state.qCM(camID).y(),state.qCM(camID).z(),state.qCM(camID).w()));
           tb_.sendTransform(tf_transform_CM);
         }
+       }
 
         // Publish Odometry
         if(pubOdometry_.getNumSubscribers() > 0 || forceOdometryPublishing_){
@@ -894,6 +1421,83 @@ class RovioNode{
 
           pubPatch_.publish(patchMsg_);
         }
+
+	// Bsp: update data respective to belief (filter) state
+	for (unsigned int i=0;i<mtState::nMax_; ++i)
+	  mpFilter_->bsp_featureParams_[i].getParams(i, filterState, mpFilter_->octree_);
+  	// Bsp: visualization extras
+        if(BSP_pubFrustum_.getNumSubscribers() > 0){
+	  BSP_frustumMsg_.header.seq = msgSeq_;
+	  if (mpFilter_->bspFilter_)
+    	    BSP_frustumMsg_.header.stamp = ros::Time::now();
+	  else
+    	    BSP_frustumMsg_.header.stamp = ros::Time(filterState.t_);
+          geometry_msgs::Point line_point;
+          BSP_frustumMsg_.points.clear();
+          for(unsigned int i=0; i<mtFilter::mt_BspFeatureParams::cam_numPlanes*mtFilter::mt_BspFeatureParams::cam_numPointsPerPlane; ++i){
+            const V3D& cam_frustCWP_i = mtFilter::mt_BspFeatureParams::cam_frustCW[i];
+            line_point.x = cam_frustCWP_i.x();
+            line_point.y = cam_frustCWP_i.y();
+            line_point.z = cam_frustCWP_i.z();
+            BSP_frustumMsg_.points.push_back(line_point);
+          }
+          BSP_pubFrustum_.publish(BSP_frustumMsg_);
+        }
+	if(BSP_pubBearingArrows_.getNumSubscribers() > 0){
+	  BSP_bearingArrowArrayMsg_.markers.clear();
+	  for (unsigned int i=0; i<mtState::nMax_; ++i){
+	    if(filterState.fsm_.isValid_[i]){
+              // Calculate landmark features in world frame
+              Eigen::Vector3d CrCP_i = state.dep(i).getDistance()*state.CfP(i).get_nor().getVec();
+              Eigen::Vector3d MrMP_i = state.MrMC(state.CfP(i).camID_) + state.qCM(state.CfP(i).camID_).inverseRotate(CrCP_i);    
+              Eigen::Vector3d fea_params_i = state.WrWM()+state.qWM().rotate(MrMP_i);
+              Eigen::Vector3d T_WtoC_i = state.template get<mtState::_pos>()+state.template get<mtState::_att>().rotate(state.MrMC(state.CfP(i).camID_));
+	      QPD qCW_i = state.qCM(state.CfP(i).camID_) * (state.template get<mtState::_att>().inverted());        
+	      Eigen::Quaterniond R_CtoW_i(qCW_i.w(), qCW_i.x(), qCW_i.y(), qCW_i.z());
+	      Eigen::Vector3d fea_C_i = R_CtoW_i.inverse() * (fea_params_i - T_WtoC_i);
+	      // calculate depth-bearing params based off world frame
+	      BSP_bearingArrow_.header.seq = msgSeq_;
+	      if (mpFilter_->bspFilter_){
+    	        BSP_bearingArrow_.header.stamp = ros::Time::now();
+	        BSP_bearingArrow_.header.frame_id="camera"+std::to_string(state.CfP(i).camID_) + "_bsp";
+	      }
+	      else{
+    	        BSP_bearingArrow_.header.stamp = ros::Time(filterState.t_);
+                BSP_bearingArrow_.header.frame_id="camera"+std::to_string(state.CfP(i).camID_);
+	      }
+	      BSP_bearingArrow_.id = i;
+  	      BSP_bearingArrow_.pose.position.x = BSP_bearingArrow_.pose.position.y = BSP_bearingArrow_.pose.position.z = 0;
+	      const Eigen::Vector3d init(1.0, 0.0, 0.0);
+  	      Eigen::Vector3d dir(fea_C_i.x(),fea_C_i.y(),fea_C_i.z());
+  	      Eigen::Quaterniond bearing_quat;
+	      bearing_quat.setFromTwoVectors(init, dir);
+  	      bearing_quat.normalize();
+	      BSP_bearingArrow_.pose.orientation.x=bearing_quat.x();
+  	      BSP_bearingArrow_.pose.orientation.y=bearing_quat.y();
+  	      BSP_bearingArrow_.pose.orientation.z=bearing_quat.z();
+  	      BSP_bearingArrow_.pose.orientation.w=bearing_quat.w();
+  	      BSP_bearingArrow_.scale.x = dir.norm();
+	      if ( !mpFilter_->bsp_featureParams_[i].bsp_fov() ){
+                BSP_bearingArrow_.color.a=0.5; BSP_bearingArrow_.color.r=0.25; BSP_bearingArrow_.color.g=0.25; BSP_bearingArrow_.color.b=0.25;
+	      }
+	      else if (mpFilter_->octree_ != nullptr){
+	        unsigned int bsp_los = mpFilter_->bsp_featureParams_[i].bsp_los();
+	        if (bsp_los == bsp::LoS::Free){ 
+	          BSP_bearingArrow_.color.a=1.0; BSP_bearingArrow_.color.r=0.0; BSP_bearingArrow_.color.g=1.0; BSP_bearingArrow_.color.b=0.0;
+	        }
+	        else{
+	          BSP_bearingArrow_.color.a=1.0; BSP_bearingArrow_.color.r=(bsp_los%(10*bsp::LoS::Occupied))/bsp::LoS::Occupied; BSP_bearingArrow_.color.g=0.0; BSP_bearingArrow_.color.b=(bsp_los%(10*bsp::LoS::Unknown))/bsp::LoS::Unknown;
+	        }
+	      }
+              else{
+	        BSP_bearingArrow_.color.a=1.0; BSP_bearingArrow_.color.r=0.0; BSP_bearingArrow_.color.g=1.0; BSP_bearingArrow_.color.b=1.0;
+	      }
+	      BSP_bearingArrowArrayMsg_.markers.push_back(BSP_bearingArrow_);
+  	      BSP_pubBearingArrows_.publish(BSP_bearingArrowArrayMsg_);
+	    }
+          }
+        }
+
         gotFirstMessages_ = true;
       }
     }

@@ -28,4 +28,12 @@
   <depend>tf</depend>
   <depend>rosbag</depend>
   <depend>yaml_cpp_catkin</depend>
+
+  <!--BSP-extras-->
+  <depend>eigen_conversions</depend>
+  <depend>octomap</depend>
+  <depend>octomap_ros</depend>
+  <depend>octomap_msgs</depend>
+  <depend>tf_conversions</depend>
+
 </package>
