@@ -74,30 +74,19 @@ find_package(catkin REQUIRED COMPONENTS
 	eigen_conversions	#BSP_extra
 	octomap_ros		#BSP_extra
 	octomap_msgs		#BSP_extra
-)
-
-#BSP_extras (rovio-specific states cast to message headers, enable transferring of filter state to/from bsp_planner)
-add_message_files(
-  DIRECTORY msg
-  FILES	BSP_Point2fMsg.msg
-	BSP_TrajectoryReferenceMsg.msg
-	BSP_RobocentricFeatureElementMsg.msg
- 	BSP_FeatureSetManagerMsg.msg
- 	BSP_StateMsg.msg
- 	BSP_FilterStateMsg.msg
+        bsp_msgs		#BSP_extra
 )
 
 add_service_files(
   DIRECTORY srv
   FILES SrvResetToPose.srv
-	BSP_SrvSendFilterState.srv		#BSP_extra (bsp_planner communication)
-	BSP_SrvPropagateFilterState.srv		#BSP_extra (bsp_planner communication)
 )
 
 generate_messages(DEPENDENCIES
   std_msgs
   geometry_msgs
   octomap_msgs	#BSP_extra (enable transferring of occupancy map from bsp_planner for feature visibility checking via raycasting)
+  bsp_msgs	#BSP_extra (enable transferring of occupancy map from bsp_planner for feature visibility checking via raycasting)
 )
 
 catkin_package(
@@ -122,6 +111,7 @@ catkin_package(
 	eigen_conversions	#BSP_extra
 	octomap_ros		#BSP_extra
 	octomap_msgs		#BSP_extra
+	bsp_msgs		#BSP_extra
 )
 
 include_directories(include ${catkin_INCLUDE_DIRS} ${YamlCpp_INCLUDE_DIRS})

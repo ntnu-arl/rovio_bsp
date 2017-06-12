@@ -48,13 +48,13 @@
 /*
  * Bsp: extras to pack-&-send and receive belief (filter) state
  */
-#include <rovio/BSP_Point2fMsg.h>
-#include <rovio/BSP_TrajectoryReferenceMsg.h>
-#include <rovio/BSP_RobocentricFeatureElementMsg.h>
-#include <rovio/BSP_StateMsg.h>
-#include <rovio/BSP_FilterStateMsg.h>
-#include <rovio/BSP_SrvSendFilterState.h>
-#include <rovio/BSP_SrvPropagateFilterState.h>
+#include <bsp_msgs/ROVIO_Point2fMsg.h>
+#include <bsp_msgs/ROVIO_RobocentricFeatureElementMsg.h>
+#include <bsp_msgs/ROVIO_StateMsg.h>
+#include <bsp_msgs/ROVIO_FilterStateMsg.h>
+#include <bsp_msgs/BSP_TrajectoryReferenceMsg.h>
+#include <bsp_msgs/BSP_SrvSendFilterState.h>
+#include <bsp_msgs/BSP_SrvPropagateFilterState.h>
 #include <eigen_conversions/eigen_msg.h>
 
 /*

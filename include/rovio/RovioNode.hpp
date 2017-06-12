@@ -490,11 +490,11 @@ class RovioNode{
 
   /** \brief Bsp: ROS service handler to pack and send belief (filter) state.
   *
-  *  @param request  - \ref rovio::BSP_SrvSendFilterState::Request
-  *  @param response  - \ref rovio::BSP_SrvSendFilterState::Response
+  *  @param request  - \ref bsp_msgs::BSP_SrvSendFilterState::Request
+  *  @param response  - \ref bsp_msgs::BSP_SrvSendFilterState::Response
   */
-  bool BSP_servFilterStateCallback(rovio::BSP_SrvSendFilterState::Request& request,
-                                   rovio::BSP_SrvSendFilterState::Response& response){
+  bool BSP_servFilterStateCallback(bsp_msgs::BSP_SrvSendFilterState::Request& request,
+                                   bsp_msgs::BSP_SrvSendFilterState::Response& response){
 
     const mtFilterState& filterState = mpFilter_->safe_;
     const mtState& state = mpFilter_->safe_.state_;
@@ -502,7 +502,7 @@ class RovioNode{
     const MXD& cov = mpFilter_->safe_.cov_;
     imuOutputCT_.transformState(state,imuOutput_); 
 
-    rovio::BSP_StateMsg state_msg;
+    bsp_msgs::ROVIO_StateMsg state_msg;
     
     state_msg.nMax = mtState::nMax_; 
     //state_msg.nLevels = mtState::nLevels_; //not part of BSP_StateMsg
@@ -523,7 +523,7 @@ class RovioNode{
       tf::quaternionEigenToMsg(Eigen::Quaterniond(state_qCM_i.w(),state_qCM_i.x(),state_qCM_i.y(),state_qCM_i.z()),state_msg.vea_qCM.at(i));
     }
 
-    std::vector<rovio::BSP_RobocentricFeatureElementMsg> robocentricFeatureElement_msgVec;
+    std::vector<bsp_msgs::ROVIO_RobocentricFeatureElementMsg> robocentricFeatureElement_msgVec;
     robocentricFeatureElement_msgVec.resize(mtState::nMax_);
     for (unsigned int i=0;i<mtState::nMax_; ++i) {
       if(filterState.fsm_.isValid_[i]){
@@ -556,7 +556,7 @@ class RovioNode{
     }
     //aux
 
-    rovio::BSP_FilterStateMsg filterState_msg;
+    bsp_msgs::ROVIO_FilterStateMsg filterState_msg;
     filterState_msg.header.seq = 0;
     filterState_msg.header.frame_id = imu_frame_;
     filterState_msg.header.stamp = ros::Time(filterState.t_);
@@ -593,11 +593,11 @@ class RovioNode{
 
   /** \brief Bsp: ROS service handler to get and propagate, then pack and send belief (filter) state.
   *
-  *  @param request  - \ref rovio::BSP_SrvPropagateFilterState::Request
-  *  @param response  - \ref BSP_SrvPropagateFilterState::Response
+  *  @param request  - \ref bsp_msgs::BSP_SrvPropagateFilterState::Request
+  *  @param response  - \ref bsp_msgs::BSP_SrvPropagateFilterState::Response
   */
-  bool BSP_servPropagateFilterStateCallback(rovio::BSP_SrvPropagateFilterState::Request& request,
-                                            rovio::BSP_SrvPropagateFilterState::Response& response){
+  bool BSP_servPropagateFilterStateCallback(bsp_msgs::BSP_SrvPropagateFilterState::Request& request,
+                                            bsp_msgs::BSP_SrvPropagateFilterState::Response& response){
     if (request.vecTrajectoryReferenceMsg.empty() || request.filterStateMsgInit.state.nMax!=mtState::nMax_ || request.filterStateMsgInit.state.nCam!=mtState::nCam_)
       return false;
 
@@ -651,7 +651,7 @@ class RovioNode{
     } 
     for (unsigned int i=0;i<mtState::nMax_; ++i) {
       if(request.filterStateMsgInit.fsm.isValid.at(i)){
-	const rovio::BSP_RobocentricFeatureElementMsg& fea_i = request.filterStateMsgInit.state.fea.at(i);
+	const bsp_msgs::ROVIO_RobocentricFeatureElementMsg& fea_i = request.filterStateMsgInit.state.fea.at(i);
 	FeatureDistance& init_state_dep = mpFilter_->init_.state_.dep(i);
 	//init_state_dep.setType(fea_i.distance_type_enum);
 	init_state_dep.setParameter(fea_i.p);
@@ -713,7 +713,7 @@ class RovioNode{
         ROS_ERROR("Waypoint NOT reached...");
         break;
       }
-      const rovio::BSP_TrajectoryReferenceMsg& trajectoryReference_msg = request.vecTrajectoryReferenceMsg.at(0);
+      const bsp_msgs::BSP_TrajectoryReferenceMsg& trajectoryReference_msg = request.vecTrajectoryReferenceMsg.at(0);
 
       const mtFilterState& filterState = mpFilter_->safe_;
       const mtState& state = mpFilter_->safe_.state_;
@@ -779,7 +779,7 @@ class RovioNode{
 
     ros::Time filterState_stamp = ros::Time(filterState.t_);
 
-    rovio::BSP_StateMsg state_msg;
+    bsp_msgs::ROVIO_StateMsg state_msg;
     
     state_msg.nMax = state.nMax_; 
     //state_msg.nLevels = state.nLevels_;
@@ -799,7 +799,7 @@ class RovioNode{
       tf::quaternionEigenToMsg(Eigen::Quaterniond(state_qCM_i.w(),state_qCM_i.x(),state_qCM_i.y(),state_qCM_i.z()),state_msg.vea_qCM.at(i));
     }
 
-    std::vector<rovio::BSP_RobocentricFeatureElementMsg> robocentricFeatureElement_msgVec;
+    std::vector<bsp_msgs::ROVIO_RobocentricFeatureElementMsg> robocentricFeatureElement_msgVec;
     robocentricFeatureElement_msgVec.resize(mtState::nMax_); 
     for (unsigned int i=0;i<mtState::nMax_; ++i) {
       if (request.filterStateMsgInit.fsm.isValid.at(i)){
@@ -842,7 +842,7 @@ class RovioNode{
     }
     //aux
 
-    rovio::BSP_FilterStateMsg filterState_msg;
+    bsp_msgs::ROVIO_FilterStateMsg filterState_msg;
     filterState_msg.header.seq = bsp_planning_seq_;
     filterState_msg.header.frame_id = imu_frame_;
     filterState_msg.header.stamp = filterState_stamp;
