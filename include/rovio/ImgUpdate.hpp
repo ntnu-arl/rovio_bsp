@@ -243,7 +243,8 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
   mutable MultilevelPatch<mtState::nLevels_,mtState::patchSize_> mlpTemp2_;
   mutable FeatureCoordinates alignedCoordinates_;
   mutable FeatureCoordinates tempCoordinates_;
-  mutable std::vector<FeatureCoordinates> candidates_;
+  //mutable std::vector<FeatureCoordinates> candidates_;
+  mutable FeatureCoordinatesVec candidates_; //Eigen std::vector allocator fix
   mutable cv::Point2f c_temp_;
   mutable Eigen::Matrix2d c_J_;
   mutable Eigen::Matrix2d A_red_;

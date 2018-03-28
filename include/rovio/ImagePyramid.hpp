@@ -132,7 +132,8 @@ class ImagePyramid{
    * @param detectionThreshold - Detection threshold of the used cv::FastFeatureDetector.
    *                             See http://docs.opencv.org/trunk/df/d74/classcv_1_1FastFeatureDetector.html
    */
-  void detectFastCorners(std::vector<FeatureCoordinates>& candidates, int l, int detectionThreshold) const{
+  //void detectFastCorners(std::vector<FeatureCoordinates>& candidates, int l, int detectionThreshold) const{
+  void detectFastCorners(FeatureCoordinatesVec& candidates, int l, int detectionThreshold) const{ //Eigen std::vector allocator fix
     std::vector<cv::KeyPoint> keypoints;
 #if (CV_MAJOR_VERSION < 3)
     cv::FastFeatureDetector feature_detector_fast(detectionThreshold, true);
