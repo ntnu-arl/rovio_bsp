@@ -23,6 +23,10 @@ endif()
 find_package(Eigen3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
 
+#BSP_extra (OpenCV should be properly find_package'd , possible options to control process are "OpenCV NO_DEFAULT_PATH REQUIRED", "VM.Vm.R NO_DEFAULT_PATH REQUIRED")
+find_package(OpenCV REQUIRED)
+include_directories(${OpenCV_INCLUDE_DIRS})
+
 if(MAKE_SCENE)
 	message(STATUS "Building ROVIO with openGL Scene Visualization")
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMAKE_SCENE=1")
@@ -121,8 +125,7 @@ if(MAKE_SCENE)
 else()
 	add_library(${PROJECT_NAME} src/rovio_node.cpp src/Camera.cpp src/FeatureCoordinates.cpp src/FeatureDistance.cpp)
 endif()
-target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} ${YamlCpp_LIBRARIES} ${OpenMP_EXE_LINKER_FLAGS} ${OPENGL_LIBRARIES} ${GLUT_LIBRARY} ${GLEW_LIBRARY})
-
+target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} ${YamlCpp_LIBRARIES} ${OpenMP_EXE_LINKER_FLAGS} ${OPENGL_LIBRARIES} ${GLUT_LIBRARY} ${GLEW_LIBRARY} ${OpenCV_LIBS}) #BSP_extra (OpenCV_LIBS is appropriate one)
 #BSP: fix compiline with dependency prioritization
 add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_generate_messages_cpp)
 #BSP: fix compiling with dependency prioritization
