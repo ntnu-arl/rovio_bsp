@@ -36,6 +36,8 @@
 #include <geometry_msgs/Pose.h>
 #pragma GCC diagnostic pop
 
+#include <Eigen/StdVector> //Eigen std::vector allocator fix
+
 #include "rovio/RovioFilter.hpp"
 #include "rovio/RovioNode.hpp"
 #ifdef MAKE_SCENE

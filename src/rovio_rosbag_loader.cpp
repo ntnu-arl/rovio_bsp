@@ -33,6 +33,9 @@
 #include <iostream>
 #include <locale>
 #include <string>
+
+#include <Eigen/StdVector> //Eigen std::vector allocator fix
+
 #include "rovio/RovioFilter.hpp"
 #include "rovio/RovioNode.hpp"
 #include <boost/foreach.hpp>
