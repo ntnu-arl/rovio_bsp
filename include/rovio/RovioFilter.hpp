@@ -204,7 +204,7 @@ class BSP_FeatureParams : public BSP_FeatureTuple {
    *  @param filterState - FilterState.
    *  @param octree      - Octomap.
    */
-  void getParams(const unsigned int& idx, const mtFilterState& filterState, const octomap::OcTree* octree){
+  void getParams(const unsigned int& idx, const mtFilterState& filterState, const octomap::OcTree* const& octree){
     const mtState& state = filterState.state_;
 
     if (std::get<_bsp_val>(*this) = filterState.fsm_.isValid_[idx]){

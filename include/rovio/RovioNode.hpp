@@ -680,8 +680,7 @@ class RovioNode{
        */
       if (bsp_rootmap_stamp_ < request.filterStateMap.header.stamp){
 	ROS_INFO("New filterStateMap data detected in bsp propagation request!");
-        if (mpFilter_->octree_ != nullptr)
-          mpFilter_->octree_->clear();
+        delete mpFilter_->octree_;
         if (request.filterStateMap.binary){
           // Bsp: The more efficient implementation will carry over only the binary map, depends on bsp_planner, depends on suggested volumetric planning modifications
           mpFilter_->octree_ = dynamic_cast<octomap::OcTree*>( octomap_msgs::binaryMsgToMap(request.filterStateMap) );
@@ -690,13 +689,13 @@ class RovioNode{
           // Bsp: Handle the less efficient implementation 
           mpFilter_->octree_ = dynamic_cast<octomap::OcTree*>( octomap_msgs::fullMsgToMap(request.filterStateMap) );
         }
-        if (mpFilter_->octree_ == nullptr){
-          ROS_WARN("octomap_msgs::binaryMsgToMap() did not manage to derive a map...");
-        }
-	else{
+        if (mpFilter_->octree_ != nullptr){
 	  bsp_rootmap_stamp_ = request.filterStateMap.header.stamp;
 	  mpFilter_->octree_->prune();
-	}
+        }
+        else{
+          ROS_WARN("octomap_msgs::binaryMsgToMap() did not manage to derive a map...");
+        }
       }
       else{
         ROS_WARN("Old filterStateMap data detected in bsp propagation request...");
