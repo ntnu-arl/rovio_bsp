@@ -355,7 +355,17 @@ class RovioFilter:public LWF::FilterBase<ImuPrediction<FILTERSTATE>,ImgUpdate<FI
     static constexpr SYMBOL_ALIAS_INIT(mt_BspFeatureParams,cam_FoVz_);	/**<Bsp: alias static properties.*/
   static constexpr bool bspFilter_ = BSPFILTER;	/**<Bsp: enabled bsp functionalities flag.*/
   octomap::OcTree* octree_ = nullptr;	/**<Bsp: belief map (octomap).*/
-  double bsp_Ts_ = 1;			/**<Bsp: propagation sampling time.*/
+  double bsp_Ts_ = 0.05;		/**<Bsp: propagation sampling time.*/
+  double xyz_damp_ = 0.1;
+  double xy_gyr_max_ = 2*M_PI/3;
+  double z_gyr_max_ = 2*M_PI/3;
+  double xy_gyr_P_ = 10;
+  double z_gyr_P_ = 5;
+  double rollpitch_max_ = 20*M_PI/180;
+  double xy_P_ = 25*0.017453293;
+  double xy_D_ = 12.5*0.017453293;
+  double z_P_ = 0.5*mPrediction_.g_[2];
+  double z_D_ = 2.5;
   
   /** \brief Constructor. Initializes the filter.
    */
@@ -379,6 +389,16 @@ class RovioFilter:public LWF::FilterBase<ImuPrediction<FILTERSTATE>,ImgUpdate<FI
     doubleRegister_.registerScalar("Bsp.cam_FoVz",cam_FoVz_);
     intRegister_.registerScalar("Bsp.map_featureVisibilityThreshold",map_featureVisibilityThreshold_);
     doubleRegister_.registerScalar("Bsp.bsp_Ts",bsp_Ts_);
+    doubleRegister_.registerScalar("Bsp.xyz_damp",xyz_damp_);
+    doubleRegister_.registerScalar("Bsp.xy_gyr_max",xy_gyr_max_);
+    doubleRegister_.registerScalar("Bsp.z_gyr_max",z_gyr_max_);
+    doubleRegister_.registerScalar("Bsp.xy_gyr_P",xy_gyr_P_);
+    doubleRegister_.registerScalar("Bsp.z_gyr_P",z_gyr_P_);
+    doubleRegister_.registerScalar("Bsp.rollpitch_max",rollpitch_max_);
+    doubleRegister_.registerScalar("Bsp.xy_P",xy_P_);
+    doubleRegister_.registerScalar("Bsp.xy_D",xy_D_);
+    doubleRegister_.registerScalar("Bsp.z_P",z_P_);
+    doubleRegister_.registerScalar("Bsp.z_D",z_D_);
 
     for(int camID=0;camID<mtState::nCam_;camID++){
       cameraCalibrationFile_[camID] = "";

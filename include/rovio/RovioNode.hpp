@@ -706,9 +706,11 @@ class RovioNode{
     //filterState.fsm_.allocateMissing(); 
     mpFilter_->init_.fsm_.setAllCameraPointers(); //TODO: why after 1st bsp iteration state.CfP(i).mpCamera_!=nullptr for all features?
     
+    const double g = -mpFilter_->mPrediction_.g_[2];
+
     sensor_msgs::Imu::Ptr predictionImu_msg = boost::make_shared<sensor_msgs::Imu>();
     const unsigned int bsp_propSimLimit = 10/mpFilter_->bsp_Ts_;
-    for (int i=0; ; ++i){  
+    for (unsigned int i=1; ; ++i){  
       if (i>=bsp_propSimLimit){
         ROS_ERROR("Waypoint NOT reached...");
         break;
@@ -718,11 +720,11 @@ class RovioNode{
       const mtFilterState& filterState = mpFilter_->safe_;
       const mtState& state = mpFilter_->safe_.state_;
 
-      const V3D pos_WrWM = state.WrWM();
-      const V3D vel_MvM = state.MvM();
-      const V3D acb = state.acb();
-      const V3D gyb = state.gyb();
-      const QPD att_qMW = state.qWM().inverted();
+      const V3D& pos_WrWM = state.WrWM();
+      const V3D& vel_MvM = state.MvM();
+      const V3D& acb = state.acb();
+      const V3D& gyb = state.gyb();
+      const QPD& att_qMW = state.qWM().inverted();
       const tf::Vector3 tf_pos_WrWM(pos_WrWM.x(),pos_WrWM.y(),pos_WrWM.z());
       const tf::Quaternion tf_att_qMW(att_qMW.x(),att_qMW.y(),att_qMW.z(),att_qMW.w());
       tfScalar tf_att_qMW_roll, tf_att_qMW_pitch, tf_att_qMW_yaw;
@@ -733,38 +735,29 @@ class RovioNode{
       tfScalar tf_att_qMW_roll_ref, tf_att_qMW_pitch_ref, tf_att_qMW_yaw_ref;  
       tf::Matrix3x3(tf_att_qMW_ref).getRPY(tf_att_qMW_roll_ref,tf_att_qMW_pitch_ref,tf_att_qMW_yaw_ref);
 
-      tfScalar tf_att_qMW_roll_0, tf_att_qMW_pitch_0, tf_att_qMW_yaw_0;  
-      tf::Matrix3x3(bsp_Q_).getRPY(tf_att_qMW_roll_0,tf_att_qMW_pitch_0,tf_att_qMW_yaw_0);
-
-      tf_att_qMW_roll_ref = tf_att_qMW_roll_0;
-      tf_att_qMW_pitch_ref = tf_att_qMW_pitch_0;      
       const tf::Vector3 tf_pos_WrWM_err = tf_pos_WrWM_ref - tf_pos_WrWM;
-      const tfScalar tf_att_qMW_roll_err = tf_att_qMW_roll_ref-tf_att_qMW_roll;
-      const tfScalar tf_att_qMW_pitch_err = tf_att_qMW_pitch_ref-tf_att_qMW_pitch;
-      const tfScalar tf_att_qMW_yaw_err = tf_att_qMW_yaw_ref-tf_att_qMW_yaw + (tf_att_qMW_yaw_err>M_PI) ? (-2.0*M_PI) : (tf_att_qMW_yaw_err<-M_PI ? 2.0*M_PI : 0);
+      const tfScalar tf_att_qMW_yaw_err_unwrapped = tf_att_qMW_yaw_ref-tf_att_qMW_yaw;
+      const tfScalar tf_att_qMW_yaw_err = (tf_att_qMW_yaw_err_unwrapped>M_PI) ? (-2.0*M_PI) : (tf_att_qMW_yaw_err_unwrapped<-M_PI ? 2.0*M_PI : 0) + tf_att_qMW_yaw_err_unwrapped;
 
-      if (tf_pos_WrWM_err.length2()<=0.0025 && vel_MvM.squaredNorm()<=0.01 && tf_att_qMW_yaw_err<=0.017453293){
+      if (tf_pos_WrWM_err.length2()<=0.05*0.05 && vel_MvM.squaredNorm()<=0.1*0.1 && std::abs(tf_att_qMW_yaw_err)<=0.017453293){
         ROS_INFO("Waypoint reached!");
         break;
       }
 
       const tf::Vector3 tf_pos_WrWM_err_BFF = tf::Transform(tf_att_qMW,tf::Vector3(0.0,0.0,0.0)).inverse()*tf_pos_WrWM_err;
-      const tf::Vector3 predictionAcc_BFF = tf::Vector3( 1.0 * tf_pos_WrWM_err_BFF.getX(), 1.0 * tf_pos_WrWM_err_BFF.getY(), 1.0 * tf_pos_WrWM_err_BFF.getZ() ); 
-      const tf::Vector3 gAcc_BFF = tf::Transform(tf_att_qMW,tf::Vector3(0.0,0.0,0.0)).inverse()*tf::Vector3(0.0,0.0,9.81);
+      tf_att_qMW_roll_ref = std::min( std::max(-mpFilter_->rollpitch_max_ , -(mpFilter_->xy_P_ * tf_pos_WrWM_err_BFF.getY() + mpFilter_->xy_D_ * vel_MvM.y())), mpFilter_->rollpitch_max_ );
+      tf_att_qMW_pitch_ref = std::min( std::max(-mpFilter_->rollpitch_max_ , (mpFilter_->xy_P_ * tf_pos_WrWM_err_BFF.getX() + mpFilter_->xy_D_ * vel_MvM.x())), mpFilter_->rollpitch_max_ );
+      const tfScalar tf_att_qMW_roll_err = tf_att_qMW_roll_ref-tf_att_qMW_roll;
+      const tfScalar tf_att_qMW_pitch_err = tf_att_qMW_pitch_ref-tf_att_qMW_pitch;
 
-      const double acc_max = sin(15.0*0.017453293)*9.81;
-      const double gyr_max = 0.75;
       predictionImu_msg->header.frame_id = "body";
       predictionImu_msg->header.stamp = ros::Time(mpFilter_->init_.t_ + mpFilter_->bsp_Ts_*i);
-      predictionImu_msg->linear_acceleration.x = acb.x() + gAcc_BFF.getX() + std::min( std::max(-acc_max , predictionAcc_BFF.getX()) , acc_max ) + 2.0*vel_MvM.x();
-      predictionImu_msg->linear_acceleration.y = acb.y() + gAcc_BFF.getY() + std::min( std::max(-acc_max , predictionAcc_BFF.getY()) , acc_max ) + 2.0*vel_MvM.y(); 
-      predictionImu_msg->linear_acceleration.z = acb.z() + gAcc_BFF.getZ() + std::min( std::max(-acc_max , predictionAcc_BFF.getZ()) , acc_max ) + 2.0*vel_MvM.z();
-      predictionImu_msg->angular_velocity.x = -gyb.x() + 1.0 * tf_att_qMW_roll_err;
-      predictionImu_msg->angular_velocity.y = -gyb.y() + 1.0 * tf_att_qMW_pitch_err;
-      predictionImu_msg->angular_velocity.z = -gyb.z() + 1.0 * tf_att_qMW_yaw_err;
-      predictionImu_msg->angular_velocity.x = std::min( std::max(-gyr_max , predictionImu_msg->angular_velocity.x) , gyr_max);
-      predictionImu_msg->angular_velocity.y = std::min( std::max(-gyr_max , predictionImu_msg->angular_velocity.y) , gyr_max);
-      predictionImu_msg->angular_velocity.z = std::min( std::max(-gyr_max , predictionImu_msg->angular_velocity.z) , gyr_max);
+      predictionImu_msg->linear_acceleration.x = acb.x() + sin(tf_att_qMW_pitch)*g + mpFilter_->xyz_damp_*vel_MvM.x(); 
+      predictionImu_msg->linear_acceleration.y = acb.y() + -sin(tf_att_qMW_roll)*g + mpFilter_->xyz_damp_*vel_MvM.y();  
+      predictionImu_msg->linear_acceleration.z = acb.z() + g + (mpFilter_->z_P_*tf_pos_WrWM_err_BFF.getZ() + mpFilter_->z_D_*vel_MvM.z()) + mpFilter_->xyz_damp_*vel_MvM.z(); 
+      predictionImu_msg->angular_velocity.x = gyb.x() + std::min( std::max(-mpFilter_->xy_gyr_max_ , mpFilter_->xy_gyr_P_ * tf_att_qMW_roll_err) , mpFilter_->xy_gyr_max_);
+      predictionImu_msg->angular_velocity.y = gyb.y() + std::min( std::max(-mpFilter_->xy_gyr_max_ , mpFilter_->xy_gyr_P_ * tf_att_qMW_pitch_err) , mpFilter_->xy_gyr_max_);
+      predictionImu_msg->angular_velocity.z = gyb.z() + std::min( std::max(-mpFilter_->z_gyr_max_ , mpFilter_->z_gyr_P_ * tf_att_qMW_yaw_err) , mpFilter_->z_gyr_max_);
       
       imuCallback(predictionImu_msg);
       BSP_landmarkCallback();
