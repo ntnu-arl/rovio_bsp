@@ -93,6 +93,9 @@ class RovioNode{
   mtPoseMeas poseUpdateMeas_;
   mtPoseUpdate* mpPoseUpdate_;
 
+  // Bsp: Filter extras
+  typedef typename mtFilter::mt_BspFeatureParams mt_BspFeatureParams;
+
   struct FilterInitializationState {
     FilterInitializationState()
         : WrWM_(V3D::Zero()),
@@ -885,7 +888,9 @@ class RovioNode{
       Eigen::Matrix2d updnoiP =  updateNoisePix * Eigen::Matrix2d::Identity();
     
       for(unsigned int i=0 ; i<mtState::nMax_; ++i){
-        if(filterState.fsm_.isValid_[i]){  
+        if(filterState.fsm_.isValid_[i] &&
+           std::get<mt_BspFeatureParams::_bsp_fov>(mpFilter_->bsp_featureParams_[i]) &&
+           std::get<mt_BspFeatureParams::_bsp_los>(mpFilter_->bsp_featureParams_[i])==bsp::LoS::Free){  
           const unsigned int& camID = state.CfP(i).camID_;
           int activeCamCounter = state.aux().activeCameraCounter_;
           const unsigned int activeCamID = (activeCamCounter + camID)%mtState::nCam_;
@@ -1427,8 +1432,8 @@ class RovioNode{
     	    BSP_frustumMsg_.header.stamp = ros::Time(filterState.t_);
           geometry_msgs::Point line_point;
           BSP_frustumMsg_.points.clear();
-          for(unsigned int i=0; i<mtFilter::mt_BspFeatureParams::cam_numPlanes*mtFilter::mt_BspFeatureParams::cam_numPointsPerPlane; ++i){
-            const V3D& cam_frustCWP_i = mtFilter::mt_BspFeatureParams::cam_frustCW[i];
+          for(unsigned int i=0; i<mt_BspFeatureParams::cam_numPlanes*mt_BspFeatureParams::cam_numPointsPerPlane; ++i){
+            const V3D& cam_frustCWP_i = mt_BspFeatureParams::cam_frustCW[i];
             line_point.x = cam_frustCWP_i.x();
             line_point.y = cam_frustCWP_i.y();
             line_point.z = cam_frustCWP_i.z();
