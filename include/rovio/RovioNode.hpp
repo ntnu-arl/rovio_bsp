@@ -202,7 +202,6 @@ class RovioNode{
   ros::Publisher BSP_pubFrustum_;              
   visualization_msgs::Marker BSP_frustumMsg_; 
   ros::Publisher BSP_pubBearingArrows_;
-  visualization_msgs::Marker BSP_bearingArrow_;
   visualization_msgs::MarkerArray BSP_bearingArrowArrayMsg_;
 
   /** \brief Constructor
@@ -378,11 +377,16 @@ class RovioNode{
     else{
       BSP_frustumMsg_.color.g = 1.0;
     }
-    BSP_bearingArrow_.ns = "bearing_arrow";
-    BSP_bearingArrow_.type = visualization_msgs::Marker::ARROW;
-    BSP_bearingArrow_.action = visualization_msgs::Marker::ADD;
-    BSP_bearingArrow_.scale.y = 0.01;
-    BSP_bearingArrow_.scale.z = 0.01;
+    BSP_bearingArrowArrayMsg_.markers.resize(mtState::nMax_);
+    for(int i=0;i<mtState::nMax_;i++){
+      visualization_msgs::Marker& BSP_bearingArrow_i = BSP_bearingArrowArrayMsg_.markers[i];
+      BSP_bearingArrow_i.ns = "bearing_arrow";
+      BSP_bearingArrow_i.id = i;
+      BSP_bearingArrow_i.type = visualization_msgs::Marker::ARROW;
+      BSP_bearingArrow_i.action = visualization_msgs::Marker::ADD;
+      BSP_bearingArrow_i.scale.y = 0.01;
+      BSP_bearingArrow_i.scale.z = 0.01;
+    }
   }
 
   /** \brief Destructor
@@ -1419,81 +1423,82 @@ class RovioNode{
           pubPatch_.publish(patchMsg_);
         }
 
-	// Bsp: update data respective to belief (filter) state
-	for (unsigned int i=0;i<mtState::nMax_; ++i)
-	  mpFilter_->bsp_featureParams_[i].getParams(i, filterState, mpFilter_->octree_);
-  	// Bsp: visualization extras
-        if(BSP_pubFrustum_.getNumSubscribers() > 0){
-	  BSP_frustumMsg_.header.seq = msgSeq_;
-	  if (mpFilter_->bspFilter_)
-    	    BSP_frustumMsg_.header.stamp = ros::Time::now();
-	  else
-    	    BSP_frustumMsg_.header.stamp = ros::Time(filterState.t_);
-          geometry_msgs::Point line_point;
-          BSP_frustumMsg_.points.clear();
-          for(unsigned int i=0; i<mt_BspFeatureParams::cam_numPlanes*mt_BspFeatureParams::cam_numPointsPerPlane; ++i){
-            const V3D& cam_frustCWP_i = mt_BspFeatureParams::cam_frustCW[i];
-            line_point.x = cam_frustCWP_i.x();
-            line_point.y = cam_frustCWP_i.y();
-            line_point.z = cam_frustCWP_i.z();
-            BSP_frustumMsg_.points.push_back(line_point);
-          }
-          BSP_pubFrustum_.publish(BSP_frustumMsg_);
-        }
-	if(BSP_pubBearingArrows_.getNumSubscribers() > 0){
-	  BSP_bearingArrowArrayMsg_.markers.clear();
-	  for (unsigned int i=0; i<mtState::nMax_; ++i){
-	    if(filterState.fsm_.isValid_[i]){
-              // Calculate landmark features in world frame
-              Eigen::Vector3d CrCP_i = state.dep(i).getDistance()*state.CfP(i).get_nor().getVec();
-              Eigen::Vector3d MrMP_i = state.MrMC(state.CfP(i).camID_) + state.qCM(state.CfP(i).camID_).inverseRotate(CrCP_i);    
-              Eigen::Vector3d fea_params_i = state.WrWM()+state.qWM().rotate(MrMP_i);
-              Eigen::Vector3d T_WtoC_i = state.template get<mtState::_pos>()+state.template get<mtState::_att>().rotate(state.MrMC(state.CfP(i).camID_));
-	      QPD qCW_i = state.qCM(state.CfP(i).camID_) * (state.template get<mtState::_att>().inverted());        
-	      Eigen::Quaterniond R_CtoW_i(qCW_i.w(), qCW_i.x(), qCW_i.y(), qCW_i.z());
-	      Eigen::Vector3d fea_C_i = R_CtoW_i.inverse() * (fea_params_i - T_WtoC_i);
-	      // calculate depth-bearing params based off world frame
-	      BSP_bearingArrow_.header.seq = msgSeq_;
-	      if (mpFilter_->bspFilter_){
-    	        BSP_bearingArrow_.header.stamp = ros::Time::now();
-	        BSP_bearingArrow_.header.frame_id="camera"+std::to_string(state.CfP(i).camID_) + "_bsp";
+	    // Bsp: update data respective to belief (filter) state
+	    for (unsigned int i=0;i<mtState::nMax_; ++i)
+	      mpFilter_->bsp_featureParams_[i].getParams(i, filterState, mpFilter_->octree_);
+  	    // Bsp: visualization extras
+	    if(BSP_pubFrustum_.getNumSubscribers() > 0){
+	      BSP_frustumMsg_.header.seq = msgSeq_;
+	      if (mpFilter_->bspFilter_)
+	        BSP_frustumMsg_.header.stamp = ros::Time::now();
+	      else
+	        BSP_frustumMsg_.header.stamp = ros::Time(filterState.t_);
+	      geometry_msgs::Point line_point;
+	      BSP_frustumMsg_.points.clear();
+	      for(unsigned int i=0; i<mt_BspFeatureParams::cam_numPlanes*mt_BspFeatureParams::cam_numPointsPerPlane; ++i){
+	        const V3D& cam_frustCWP_i = mt_BspFeatureParams::cam_frustCW[i];
+	        line_point.x = cam_frustCWP_i.x();
+	        line_point.y = cam_frustCWP_i.y();
+	        line_point.z = cam_frustCWP_i.z();
+	        BSP_frustumMsg_.points.push_back(line_point);
 	      }
-	      else{
-    	        BSP_bearingArrow_.header.stamp = ros::Time(filterState.t_);
-                BSP_bearingArrow_.header.frame_id="camera"+std::to_string(state.CfP(i).camID_);
-	      }
-	      BSP_bearingArrow_.id = i;
-  	      BSP_bearingArrow_.pose.position.x = BSP_bearingArrow_.pose.position.y = BSP_bearingArrow_.pose.position.z = 0;
-	      const Eigen::Vector3d init(1.0, 0.0, 0.0);
-  	      Eigen::Vector3d dir(fea_C_i.x(),fea_C_i.y(),fea_C_i.z());
-  	      Eigen::Quaterniond bearing_quat;
-	      bearing_quat.setFromTwoVectors(init, dir);
-  	      bearing_quat.normalize();
-	      BSP_bearingArrow_.pose.orientation.x=bearing_quat.x();
-  	      BSP_bearingArrow_.pose.orientation.y=bearing_quat.y();
-  	      BSP_bearingArrow_.pose.orientation.z=bearing_quat.z();
-  	      BSP_bearingArrow_.pose.orientation.w=bearing_quat.w();
-  	      BSP_bearingArrow_.scale.x = dir.norm();
-	      if ( !mpFilter_->bsp_featureParams_[i].bsp_fov() ){
-                BSP_bearingArrow_.color.a=0.5; BSP_bearingArrow_.color.r=0.25; BSP_bearingArrow_.color.g=0.25; BSP_bearingArrow_.color.b=0.25;
-	      }
-	      else if (mpFilter_->octree_ != nullptr){
-	        unsigned int bsp_los = mpFilter_->bsp_featureParams_[i].bsp_los();
-	        if (bsp_los == bsp::LoS::Free){ 
-	          BSP_bearingArrow_.color.a=1.0; BSP_bearingArrow_.color.r=0.0; BSP_bearingArrow_.color.g=1.0; BSP_bearingArrow_.color.b=0.0;
+	      BSP_pubFrustum_.publish(BSP_frustumMsg_);
+	    }
+	    if(BSP_pubBearingArrows_.getNumSubscribers() > 0){
+	      for (unsigned int i=0; i<mtState::nMax_; ++i){
+	        visualization_msgs::Marker& BSP_bearingArrow_i = BSP_bearingArrowArrayMsg_.markers[i];
+	        BSP_bearingArrow_i.header.seq = msgSeq_;
+	        if (mpFilter_->bspFilter_){
+	          BSP_bearingArrow_i.header.stamp = ros::Time::now();
+	          BSP_bearingArrow_i.header.frame_id="camera"+std::to_string(state.CfP(i).camID_) + "_bsp";
 	        }
 	        else{
-	          BSP_bearingArrow_.color.a=1.0; BSP_bearingArrow_.color.r=(bsp_los%(10*bsp::LoS::Occupied))/bsp::LoS::Occupied; BSP_bearingArrow_.color.g=0.0; BSP_bearingArrow_.color.b=(bsp_los%(10*bsp::LoS::Unknown))/bsp::LoS::Unknown;
+	          BSP_bearingArrow_i.header.stamp = ros::Time(filterState.t_);
+	          BSP_bearingArrow_i.header.frame_id="camera"+std::to_string(state.CfP(i).camID_);
+	        }
+	        if(filterState.fsm_.isValid_[i]){
+	          // Calculate landmark features in world frame
+	          Eigen::Vector3d CrCP_i = state.dep(i).getDistance()*state.CfP(i).get_nor().getVec();
+	          Eigen::Vector3d MrMP_i = state.MrMC(state.CfP(i).camID_) + state.qCM(state.CfP(i).camID_).inverseRotate(CrCP_i);
+	          Eigen::Vector3d fea_params_i = state.WrWM()+state.qWM().rotate(MrMP_i);
+	          Eigen::Vector3d T_WtoC_i = state.template get<mtState::_pos>()+state.template get<mtState::_att>().rotate(state.MrMC(state.CfP(i).camID_));
+	          QPD qCW_i = state.qCM(state.CfP(i).camID_) * (state.template get<mtState::_att>().inverted());
+	          Eigen::Quaterniond R_CtoW_i(qCW_i.w(), qCW_i.x(), qCW_i.y(), qCW_i.z());
+	          Eigen::Vector3d fea_C_i = R_CtoW_i.inverse() * (fea_params_i - T_WtoC_i);
+	          // calculate depth-bearing params based off world frame
+	          BSP_bearingArrow_i.pose.position.x = BSP_bearingArrow_i.pose.position.y = BSP_bearingArrow_i.pose.position.z = 0;
+	          static const Eigen::Vector3d init(1.0, 0.0, 0.0);
+	          Eigen::Vector3d dir(fea_C_i.x(),fea_C_i.y(),fea_C_i.z());
+	          Eigen::Quaterniond bearing_quat;
+	          bearing_quat.setFromTwoVectors(init, dir);
+	          bearing_quat.normalize();
+	          BSP_bearingArrow_i.pose.orientation.x=bearing_quat.x();
+	          BSP_bearingArrow_i.pose.orientation.y=bearing_quat.y();
+	          BSP_bearingArrow_i.pose.orientation.z=bearing_quat.z();
+	          BSP_bearingArrow_i.pose.orientation.w=bearing_quat.w();
+	          BSP_bearingArrow_i.scale.x = dir.norm();
+	          if ( !mpFilter_->bsp_featureParams_[i].bsp_fov() ){
+	            BSP_bearingArrow_i.color.a=0.5; BSP_bearingArrow_i.color.r=0.25; BSP_bearingArrow_i.color.g=0.25; BSP_bearingArrow_i.color.b=0.25;
+	          }
+	          else if (mpFilter_->octree_ != nullptr){
+	            unsigned int bsp_los = mpFilter_->bsp_featureParams_[i].bsp_los();
+	            if (bsp_los == bsp::LoS::Free){
+	              BSP_bearingArrow_i.color.a=1.0; BSP_bearingArrow_i.color.r=0.0; BSP_bearingArrow_i.color.g=1.0; BSP_bearingArrow_i.color.b=0.0;
+	            }
+	            else{
+	              BSP_bearingArrow_i.color.a=1.0; BSP_bearingArrow_i.color.r=(bsp_los%(10*bsp::LoS::Occupied))/bsp::LoS::Occupied; BSP_bearingArrow_i.color.g=0.0; BSP_bearingArrow_i.color.b=(bsp_los%(10*bsp::LoS::Unknown))/bsp::LoS::Unknown;
+	            }
+	          }
+	          else{
+	            BSP_bearingArrow_i.color.a=1.0; BSP_bearingArrow_i.color.r=0.0; BSP_bearingArrow_i.color.g=1.0; BSP_bearingArrow_i.color.b=1.0;
+	          }
+	        }
+	        else{
+	          BSP_bearingArrow_i.color.a=0.0;
 	        }
 	      }
-              else{
-	        BSP_bearingArrow_.color.a=1.0; BSP_bearingArrow_.color.r=0.0; BSP_bearingArrow_.color.g=1.0; BSP_bearingArrow_.color.b=1.0;
-	      }
-	      BSP_bearingArrowArrayMsg_.markers.push_back(BSP_bearingArrow_);
-  	      BSP_pubBearingArrows_.publish(BSP_bearingArrowArrayMsg_);
+	      BSP_pubBearingArrows_.publish(BSP_bearingArrowArrayMsg_);
 	    }
-          }
-        }
 
         gotFirstMessages_ = true;
       }
