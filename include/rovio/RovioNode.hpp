@@ -196,10 +196,12 @@ public:
   std::string imu_frame_;
 
   //CUSTOMIZATION
-  double imu_offset_;
-  double cam0_offset_;
-  double cam1_offset_;
-  double cam2_offset_;
+  double imu_offset_ = 0.0;         //time offset added to IMU messages to sync with camera images
+  double cam0_offset_ = 0.0;        //time offset added to camera 0 messages to sync with IMU images
+  double cam1_offset_ = 0.0;        //time offset added to camera 1 messages to sync with IMU images
+  double cam2_offset_ = 0.0;        //time offset added to camera 2 messages to sync with IMU images
+  bool resize_input_image_ = false; //should input images be resized? typically for larger input images to be scaled down - CAMERA INTRINSICS NOT SCALED ACCORDINGLY CHECK CALIBRATION FILE
+  double resize_factor_ = 0.5;      //factor by which input images should be rescaled cannot be greater than 1.0 - CAMERA INTRINSICS NOT SCALED ACCORDINGLY CHECK CALIBRATION FILE
   //CUSTOMIZATION
 
   // Bsp: node variables
@@ -301,6 +303,10 @@ public:
     nh_private_.param("cam0_offset", cam0_offset_, 0.0);
     nh_private_.param("cam1_offset", cam1_offset_, 0.0);
     nh_private_.param("cam2_offset", cam2_offset_, 0.0);
+    nh_private_.param("resize_input_image", resize_input_image_, false);
+    nh_private_.param("resize_factor", resize_factor_, 0.5);
+    if (resize_factor_ > 1.0)
+      resize_factor_ = 1.0;
     //CUSTOMIZATION
 
     // Initialize messages
@@ -1112,11 +1118,25 @@ public:
       cam_offset = cam2_offset_;
     //CUSTOMIZATION
 
-    cv::Mat cv_img;
-
     //CUSTOMIZATION
-    //cv_ptr->image.copyTo(cv_img);
-    cv_ptr->image.convertTo(cv_img, CV_32FC1); //smk: convert incoming image to floating point value, this can deal with single channel 8 and 16 bit images
+    //Covert Color/Gray/16bit images to float
+    cv::Mat cv_img;
+    if (cv_ptr->encoding == "bgr8")
+    {
+      cv::cvtColor(cv_ptr->image, cv_img, CV_BGR2GRAY);
+      cv_img.convertTo(cv_img, CV_32FC1);
+    }
+    else if (cv_ptr->encoding == "rgb8")
+    {
+      cv::cvtColor(cv_ptr->image, cv_img, CV_RGB2GRAY);
+      cv_img.convertTo(cv_img, CV_32FC1);
+    }
+    else
+      cv_ptr->image.convertTo(cv_img, CV_32FC1); //smk: convert incoming image to floating point value, this can deal with single channel 8 and 16 bit images
+
+    //Image Resize
+    if (resize_input_image_)
+      cv::resize(cv_img, cv_img, cv::Size(), resize_factor_, resize_factor_); //INTER_LINEAR - a bilinear interpolation (used by default)
     //CUSTOMIZATION
 
     if (init_state_.isInitialized() && !cv_img.empty())

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?> 
+<launch>
+  <!-- use_sim_time -->
+  <param name ="/use_sim_time" value="true"/>
+  
+  <!-- ROSBAG Recoding -->
+  <arg name="record_rosbag" value="false"/>
+  <node name="rosbag_record" pkg="rosbag" type="record" output="screen" if="$(arg record_rosbag)" args="-o /home/shehryar/cerberus_loam_ws/ROSBAGS/alpha_rotio_odom.bag
+  /rotio/odometry
+  /tf"/> 
+
+  <node pkg="rovio" type="rovio_node" name="rovio" output="screen" clear_params="true">
+    <param name="filter_config" value="$(find rovio)/cfg/alpha_blackfly/alpha_blackfly.info"/>
+    <remap from="imu0" to="/vn100/imu"/>
+
+    <!-- Alpha - Blackfly-VN100 -->
+    <param name="camera0_config" value="$(find rovio)/cfg/alpha_blackfly/alpha_blackfly.yaml"/>
+    <!-- <remap from="cam0/image_raw" to="/camera/image_raw"/> -->
+    <remap from="cam0/image_raw" to="/camera/image_mono"/>
+    <param name="cam0_offset" value="0.01215371276812396"/> # blackfly: timeshift[s](t_imu = t_cam + shift) 0.01215371276812396 
+    <param name="resize_input_image" value="true"/>         # resize input image by resize_factor - CAMERA INTRINSICS NOT SCALED CORRECT CALIBRATION FILE MANUALLY
+    <param name="resize_factor" value="0.5"/>               # (img.cols x resize_factor) X (img.rows x resize_factor)
+
+    <!-- ROVIO ODOMETRY POST PROCESSING -->
+    <remap from="rovio/odometry" to="/rotio/odometry"/>
+  </node>
+</launch>

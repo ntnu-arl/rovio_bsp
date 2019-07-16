@@ -50,19 +50,24 @@ class ImuPrediction: public LWF::Prediction<FILTERSTATE>{
   typedef typename Base::mtFilterState mtFilterState;
   typedef typename Base::mtMeas mtMeas;
   typedef typename Base::mtNoise mtNoise;
-  const V3D g_; /**<Gravity in inertial frame, always aligned with the z-axis.*/
-  double inertialMotionRorTh_; /**<Threshold on the rotational rate for motion detection.*/
-  double inertialMotionAccTh_; /**<Threshold on the acceleration for motion detection.*/
+  /*const*/ V3D g_;                 /**<Gravity in inertial frame, always aligned with the z-axis.*/
+  double inertialMotionRorTh_;      /**<Threshold on the rotational rate for motion detection.*/
+  double inertialMotionAccTh_;      /**<Threshold on the acceleration for motion detection.*/
   mutable FeatureCoordinates oldC_;
   mutable FeatureDistance oldD_;
   mutable Eigen::Matrix2d bearingVectorJac_;
-  ImuPrediction():g_(0,0,-9.81){
+  ImuPrediction() : g_(0, 0, -9.81){
+    //CUSTOMIZATION
+    doubleRegister_.registerVector("GravityVector.g", g_);
+    //CUSTOMIZATION
+
     int ind;
     inertialMotionRorTh_ = 0.1;
     inertialMotionAccTh_ = 0.1;
     doubleRegister_.registerScalar("MotionDetection.inertialMotionRorTh",inertialMotionRorTh_);
     doubleRegister_.registerScalar("MotionDetection.inertialMotionAccTh",inertialMotionAccTh_);
-    for(int i=0;i<mtState::nMax_;i++){
+    for (int i = 0; i < mtState::nMax_; i++)
+    {
       ind = mtNoise::template getId<mtNoise::_fea>(i);
       doubleRegister_.removeScalarByVar(prenoiP_(ind,ind));
       doubleRegister_.removeScalarByVar(prenoiP_(ind+1,ind+1));

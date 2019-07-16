@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?> 
+<launch>
+  <!-- use_sim_time -->
+  <param name ="/use_sim_time" value="true"/>
+  
+  <!-- ROSBAG Recoding -->
+  <arg name="record_rosbag" value="false"/>
+  <node name="rosbag_record" pkg="rosbag" type="record" output="screen" if="$(arg record_rosbag)" args="-o /home/shehryar/cerberus_loam_ws/ROSBAGS/charlie_rotio_odom.bag
+  /rotio/odometry
+  /tf"/> 
+
+  <!-- Charlie - Tau2-VN100 -->
+  <node pkg="rovio" type="rovio_node" name="rovio" output="screen" clear_params="true">
+    <param name="filter_config" value="$(find rovio)/cfg/charlie_tau2/charlie_tau2.info"/>
+    <remap from="imu0" to="/vn100/imu"/>
+
+    <!-- TAU2 -->
+    <param name="camera0_config" value="$(find rovio)/cfg/charlie_tau2/charlie_tau2.yaml"/>
+    <remap from="cam0/image_raw" to="/tau_nodelet/thermal_image"/>
+    <param name="cam0_offset" value="-0.02414188675155223"/> #tau2: timeshift[s](t_imu = t_cam + shift) -0.02414188675155223
+
+    <!-- ROVIO ODOMETRY POST PROCESSING -->
+    <remap from="rovio/odometry" to="/rotio/odometry"/>  
+  </node>
+</launch>

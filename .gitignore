@@ -26,3 +26,22 @@ rovio_custom.info
 
 html/
 latex/
+
+#Ignore specific folders
+cfg/psoc_tau_files/
+
+#Ignore specific files
+cfg/psoc_tau_files.zip
+launch/psoc_rovio.launch
+
+cfg/thermalDroneNewCCD_left.yaml
+cfg/thermalDroneNewCCD_right.yaml
+cfg/thermalDroneNewCCD_tau2.yaml
+cfg/bsp_rovio.info
+launch/bsp_rovio.launch
+
+cfg/thermal_rovio.info
+launch/tau_thermal_rovio.launch
+
+cfg/boson_comstock/
+launch/boson_thermal_rovio.launch

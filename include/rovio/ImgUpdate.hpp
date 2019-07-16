@@ -248,6 +248,8 @@ public:
   double alignmentGradientExponent_;       /**<Exponent used for gradient based weighting of residuals.*/
   double discriminativeSamplingDistance_;  /**<Sampling distance for checking discriminativity of patch (if <= 0.0 no check is performed).*/
   double discriminativeSamplingGain_;      /**<Gain for threshold above which the samples must lie (if <= 1.0 the patchRejectionTh is used).*/
+  int discriminativeCountThreshold_;       /**<CUSTOMIZATION: Number of sampled points around the tracked point that need to be discriminative.*/
+  double maxAllowedFeatureDistance_;       /**<CUSTOMIZATION: Max allowed estimated feature distance after performing update, remove features with very far away depth and clustered features during backward motion.*/
 
   // Temporary
   mutable PixelOutputCT pixelOutputCT_;
@@ -329,6 +331,8 @@ public:
     alignmentGaussianWeightingSigma_ = 2.0;
     discriminativeSamplingDistance_ = 0.0;
     discriminativeSamplingGain_ = 0.0;
+    discriminativeCountThreshold_ = 2; //CUSTOMIZATION
+    maxAllowedFeatureDistance_ = 25.0; //CUTOMIZATION
     doubleRegister_.registerDiagonalMatrix("initCovFeature", initCovFeature_);
     doubleRegister_.registerScalar("initDepth", initDepth_);
     doubleRegister_.registerScalar("startDetectionTh", startDetectionTh_);
@@ -384,6 +388,7 @@ public:
     doubleRegister_.registerScalar("alignmentGaussianWeightingSigma", alignmentGaussianWeightingSigma_);
     alignmentGradientExponent_ = static_cast<double>(alignment_.gradientExponent_);
     doubleRegister_.registerScalar("alignmentGradientExponent", alignmentGradientExponent_);
+    doubleRegister_.registerScalar("maxAllowedFeatureDistance", maxAllowedFeatureDistance_);
   };
 
   /** \brief Destructor
@@ -527,7 +532,7 @@ public:
     if (!hasConverged_)
     {
       if (verbose_)
-        std::cout << "    \033[31mREJECTED (iterations did no converge)\033[0m" << std::endl;
+        std::cout << "    \033[31mREJECTED (iterations did not converge)\033[0m" << std::endl;
       if (mlpTemp1_.isMultilevelPatchInFrame(meas_.aux().pyr_[activeCamID], featureOutput_.c(), startLevel_, false))
       {
         featureOutput_.c().drawPoint(drawImg_, cv::Scalar(255, 0, 0), 1.0);
@@ -580,7 +585,7 @@ public:
             }
           }
         }
-        if (countAboveThreshold < 2) //CUSTOMIZATION - if we use 3 will it improve cornerness
+        if (countAboveThreshold < discriminativeCountThreshold_) //CUSTOMIZATION - addded parameter to see if we use 3 instead of default 2 will it improve cornerness
         {
           if (verbose_)
             std::cout << "    \033[31mREJECTED (feature location not discriminative enough)\033[0m" << std::endl;
@@ -932,7 +937,9 @@ public:
         {
           if (filterState.fsm_.isValid_[i])
           {
-            if (filterState.state_.dep(i).getDistance() < 1e-8)
+            if (filterState.state_.dep(i).getDistance() < 1e-8 ||
+                ((filterState.fsm_.features_[i].mpStatistics_->currentTime_ - filterState.fsm_.features_[i].mpStatistics_->initTime_) > 1.0 &&
+                 filterState.state_.dep(i).getDistance() > maxAllowedFeatureDistance_)) //CUSTOMIZATION delete feature if it has more than 1sec of updates and converged depth is more than max allowed.
             {
               if (verbose_)
                 std::cout << "    \033[33mRemoved feature " << filterState.fsm_.features_[i].idx_ << " with invalid distance parameter " << filterState.state_.dep(i).p_ << "!\033[0m" << std::endl;
@@ -1190,7 +1197,7 @@ public:
           applyHistogramEqualization = true;
         if (verbose_)
           std::cout << "Image Min/Max:" << imgMin << "/" << imgMax << "\t applyHistogramEqualization=" << applyHistogramEqualization << std::endl;
-        
+
         //Detect FAST corners, equalize image if 16-bit before application of OpenCV FAST detector
         for (int l = endLevel_; l <= startLevel_; l++)
         {
