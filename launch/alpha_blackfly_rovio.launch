@@ -22,6 +22,6 @@
     <param name="resize_factor" value="0.5"/>               # (img.cols x resize_factor) X (img.rows x resize_factor)
 
     <!-- ROVIO ODOMETRY POST PROCESSING -->
-    <remap from="rovio/odometry" to="/rotio/odometry"/>
+    <!-- <remap from="rovio/odometry" to="/rotio/odometry"/> -->
   </node>
 </launch>

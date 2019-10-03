@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?> 
+<launch>
+  <!-- use_sim_time -->
+  <param name ="/use_sim_time" value="true"/>
+  
+  <!-- SMB - Blackfly - ADIS -->
+  <node pkg="rovio" type="rovio_node" name="rovio" output="screen" clear_params="true">
+    <param name="filter_config" value="$(find rovio)/cfg/smb_blackfly/smb_blackfly.info"/>
+    <remap from="imu0" to="/mavros/imu/data_raw"/>
+
+    <!-- Blackfly -->
+    <param name="camera0_config" value="$(find rovio)/cfg/smb_blackfly/smb_blackfly.yaml"/>
+    <remap from="cam0/image_raw" to="/front/image_raw"/>
+    <param name="cam0_offset" value="0.0228618355835"/> #blackfly: timeshift[s](t_imu = t_cam + shift) 0.0228618355835
+
+  </node>
+</launch>
