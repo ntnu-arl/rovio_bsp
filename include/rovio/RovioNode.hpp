@@ -196,12 +196,16 @@ public:
   std::string imu_frame_;
 
   //CUSTOMIZATION
-  double imu_offset_ = 0.0;         //time offset added to IMU messages to sync with camera images
-  double cam0_offset_ = 0.0;        //time offset added to camera 0 messages to sync with IMU images
-  double cam1_offset_ = 0.0;        //time offset added to camera 1 messages to sync with IMU images
-  double cam2_offset_ = 0.0;        //time offset added to camera 2 messages to sync with IMU images
-  bool resize_input_image_ = false; //should input images be resized? typically for larger input images to be scaled down - CAMERA INTRINSICS NOT SCALED ACCORDINGLY CHECK CALIBRATION FILE
-  double resize_factor_ = 0.5;      //factor by which input images should be rescaled cannot be greater than 1.0 - CAMERA INTRINSICS NOT SCALED ACCORDINGLY CHECK CALIBRATION FILE
+  double imu_offset_ = 0.0;                     //time offset added to IMU messages to sync with camera images
+  double cam0_offset_ = 0.0;                    //time offset added to camera 0 messages to sync with IMU images
+  double cam1_offset_ = 0.0;                    //time offset added to camera 1 messages to sync with IMU images
+  double cam2_offset_ = 0.0;                    //time offset added to camera 2 messages to sync with IMU images
+  bool resize_input_image_ = false;             //should input images be resized? typically for larger input images to be scaled down - CAMERA INTRINSICS NOT SCALED ACCORDINGLY CHECK CALIBRATION FILE
+  double resize_factor_ = 0.5;                  //factor by which input images should be rescaled cannot be greater than 1.0 - CAMERA INTRINSICS NOT SCALED ACCORDINGLY CHECK CALIBRATION FILE
+  bool histogram_equalize_8bit_images_ = false; //use CLAHE to histogram equalize input intensity images, only for 8-bit images. 16-bit image equalization for feature detection does not require this to be on.
+  cv::Ptr<cv::CLAHE> clahe;
+  double clahe_clip_limit_ = 4.0;               //number of pixels used to clip the CDF for histogram equalization
+  double clahe_grid_size_ = 8;                  //clahe_grid_size_ x clahe_grid_size_ pixel neighborhood used 
   //CUSTOMIZATION
 
   // Bsp: node variables
@@ -303,6 +307,15 @@ public:
     nh_private_.param("cam0_offset", cam0_offset_, 0.0);
     nh_private_.param("cam1_offset", cam1_offset_, 0.0);
     nh_private_.param("cam2_offset", cam2_offset_, 0.0);
+    nh_private_.param("histogram_equalize_8bit_images", histogram_equalize_8bit_images_, false);
+    if (histogram_equalize_8bit_images_)
+    {
+      nh_private_.param("clahe_clip_limit", clahe_clip_limit_, 4.0);
+      nh_private_.param("clahe_grid_size", clahe_grid_size_, 64.0);
+      clahe = cv::createCLAHE();
+      clahe->setClipLimit(clahe_clip_limit_);
+      clahe->setTilesGridSize(cv::Size(clahe_grid_size_, clahe_grid_size_));
+    }
     nh_private_.param("resize_input_image", resize_input_image_, false);
     nh_private_.param("resize_factor", resize_factor_, 0.5);
     if (resize_factor_ > 1.0)
@@ -551,7 +564,6 @@ public:
   bool BSP_servFilterStateCallback(bsp_msgs::BSP_SrvSendFilterState::Request &request,
                                    bsp_msgs::BSP_SrvSendFilterState::Response &response)
   {
-
     const mtFilterState &filterState = mpFilter_->safe_;
     const mtState &state = mpFilter_->safe_.state_;
     state.updateMultiCameraExtrinsics(&mpFilter_->multiCamera_);
@@ -1137,6 +1149,23 @@ public:
     //Image Resize
     if (resize_input_image_)
       cv::resize(cv_img, cv_img, cv::Size(), resize_factor_, resize_factor_); //INTER_LINEAR - a bilinear interpolation (used by default)
+
+    //use CLAHE to histogram Equalize 8-bit intensity Images
+    if (histogram_equalize_8bit_images_)
+    {
+      //Check if input image is actually 8-bit
+      double imgMin, imgMax;
+      cv::minMaxLoc(cv_img, &imgMin, &imgMax);
+      if (imgMax <= 255.0)
+      {
+        cv::Mat inImg, outImg;
+        cv_img.convertTo(inImg, CV_8UC1);
+        clahe->apply(inImg, outImg);
+        outImg.convertTo(cv_img, CV_32FC1);
+      }
+      else
+        ROS_WARN_THROTTLE(5, "Histogram Equaliztion for 8-bit intensity images is turned on but input Image is not 8-bit");
+    }
     //CUSTOMIZATION
 
     if (init_state_.isInitialized() && !cv_img.empty())

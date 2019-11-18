@@ -15,13 +15,17 @@
 
     <!-- Alpha - Blackfly-VN100 -->
     <param name="camera0_config" value="$(find rovio)/cfg/alpha_blackfly/alpha_blackfly.yaml"/>
-    <!-- <remap from="cam0/image_raw" to="/camera/image_raw"/> -->
-    <remap from="cam0/image_raw" to="/camera/image_mono"/>
+    <remap from="cam0/image_raw" to="/camera/image_raw"/>
+    <!-- <remap from="cam0/image_raw" to="/camera/image_mono"/> -->
     <param name="cam0_offset" value="0.01215371276812396"/> # blackfly: timeshift[s](t_imu = t_cam + shift) 0.01215371276812396 
     <param name="resize_input_image" value="true"/>         # resize input image by resize_factor - CAMERA INTRINSICS NOT SCALED CORRECT CALIBRATION FILE MANUALLY
     <param name="resize_factor" value="0.5"/>               # (img.cols x resize_factor) X (img.rows x resize_factor)
+    <param name="histogram_equalize_8bit_images" value="true"/>
+    <param name="clahe_clip_limit" value="2"/>
+    <param name="clahe_grid_size" value="6"/>
 
     <!-- ROVIO ODOMETRY POST PROCESSING -->
-    <!-- <remap from="rovio/odometry" to="/rotio/odometry"/> -->
+    <remap from="rovio/odometry" to="/rotio/odometry"/>
   </node>
+
 </launch>
