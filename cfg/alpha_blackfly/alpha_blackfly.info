@@ -82,10 +82,10 @@ ImgUpdate
 	updateVecNormTermination 1e-4;
 	maxNumIteration 20; 35; 20;
     doPatchWarping true;										Should the patches be warped
-    doFrameVisualisation false;									Should the frames be visualized
+    doFrameVisualisation true;									Should the frames be visualized
     visualizePatches false;										Should the patches be visualized
     useDirectMethod true;										Should the EKF-innovation be based on direct intensity error (o.w. reprojection error)
-    startLevel 3;												Highest patch level which is being employed (must be smaller than the hardcoded template parameter)
+    startLevel 2;												Highest patch level which is being employed (must be smaller than the hardcoded template parameter)
     endLevel 1;													Lowest patch level which is being employed
     nDetectionBuckets 100;										Number of discretization buckets used during the candidates selection
     MahalanobisTh 9.21;											Mahalanobis treshold for the update, 5.8858356
@@ -178,7 +178,7 @@ Prediction
     {
         g_x 0.0;                                X-Component of gravity vector [m^2/s]
         g_y 0.0;                                Y-Component of gravity vector [m^2/s]
-        g_z -9.8754;                            Z-Component of gravity vector [m^2/s]
+        g_z -9.92; -9.8754;                     Z-Component of gravity vector [m^2/s]
     }
     MotionDetection
     {

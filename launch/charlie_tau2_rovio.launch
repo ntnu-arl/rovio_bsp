@@ -23,3 +23,6 @@
     <remap from="rovio/odometry" to="/rotio/odometry"/>  
   </node>
 </launch>
+
+<!-- ROVIO Pose reset service call format-->
+<!-- rosservice call /rovio/reset_to_pose ['{x: 2.0, y: 2.0, z: 2.0}','{x: 0.0, y: 0.0, z: 0.0, w: 1.0}'] -->

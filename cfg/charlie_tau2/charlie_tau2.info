@@ -82,7 +82,7 @@ ImgUpdate
 	updateVecNormTermination 1e-4;
 	maxNumIteration 20; 35; 20;
     doPatchWarping true;										Should the patches be warped
-    doFrameVisualisation false;									Should the frames be visualized
+    doFrameVisualisation true;									Should the frames be visualized
     visualizePatches false;										Should the patches be visualized - 'Do not turn on if using 16-bit images'
     useDirectMethod true;										Should the EKF-innovation be based on direct intensity error (o.w. reprojection error)
     startLevel 2;												Highest patch level which is being employed (must be smaller than the hardcoded template parameter)
@@ -112,7 +112,7 @@ ImgUpdate
     minRelativeSTScore 0.75;    								Minimum relative ST-score for extracting new feature patch - The quality of new extracted patch for matching is atleast greater than 75% quality of old
     minAbsoluteSTScore 5.0;										Minimum absolute ST-score for extracting new feature patch
     minTimeBetweenPatchUpdate 1.0; 3.0; 5.0;  				    Minimum time between new multilevel patch extrection [s]
-    fastDetectionThreshold 5; 10; 5;   							Fast corner detector treshold while adding new feature
+    fastDetectionThreshold 10; 10; 5;  							Fast corner detector treshold while adding new feature
     alignConvergencePixelRange 10;								Assumed convergence range for image alignment (gets scaled with the level) [pixels]
     alignCoverageRatio 2;										How many sigma of the uncertainty should be covered in the adaptive alignement
     alignMaxUniSample 1;										Maximal number of alignment seeds on one side -> total number of sample = 2n+1. Carefull can get very costly if diverging!
@@ -123,7 +123,7 @@ ImgUpdate
     useIntensityOffsetForAlignment true;						Should an intensity offset between the patches be considered
     useIntensitySqewForAlignment true;							Should an intensity sqew between the patches be considered
     removeNegativeFeatureAfterUpdate true;						Should feature with negative distance get removed
-    maxUncertaintyToDepthRatioForDepthInitialization 0.3; 0.0; 0.3;  If set to 0.0 the depth is initialized with the standard value provided above, otherwise ROVIO attempts to figure out a median depth in each frame
+    maxUncertaintyToDepthRatioForDepthInitialization 0.3;       If set to 0.0 the depth is initialized with the standard value provided above, otherwise ROVIO attempts to figure out a median depth in each frame
     useCrossCameraMeasurements false;							Should cross measurements between frame be used. Might be turned of in calibration phase.
     doStereoInitialization false;								Should a stereo match be used for feature initialization.
     noiseGainForOffCamera 1.0;									Factor added on update noise if not main camera
