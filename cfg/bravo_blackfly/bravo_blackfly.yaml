@@ -1,0 +1,13 @@
+image_width: 720
+image_height: 540
+camera_name: cam_blackfly
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [596.085170327, 0.000000, 373.12111084, 0.000000, 595.722849509,  296.495085621, 0.000000, 0.000000, 1.000000]
+distortion_model: rational_polynomial
+distortion_coefficients:
+  rows: 1
+  cols: 4
+  data: [-0.028134248296708, 0.018256382400153755, -0.048241474770743115, 0.03496344092363754]
+  
