@@ -1173,18 +1173,21 @@ public:
     //CUSTOMIZATION
 
     // MAPLAB
-    if (resize_input_image_ || histogram_equalize_8bit_images_)
+    if (pubDecimated_.getNumSubscribers() > 0)
     {
-      cv::Mat temp_image;
-      cv_img.convertTo(temp_image, CV_8UC1);
+      if (resize_input_image_ || histogram_equalize_8bit_images_)
+      {
+        cv::Mat temp_image;
+        cv_img.convertTo(temp_image, CV_8UC1);
 
-      cv_bridge::CvImage img_bridge;
+        cv_bridge::CvImage img_bridge;
 
-      img_bridge = cv_bridge::CvImage(img->header, sensor_msgs::image_encodings::MONO8, temp_image);
-      img_bridge.toImageMsg(decimatedImage_); // from cv_bridge to sensor_msgs::Image
-      pubDecimated_.publish(decimatedImage_);       // ros::Publisher pub_img = node.advertise<sensor_msgs::Image>("topic", queuesize);
+        img_bridge = cv_bridge::CvImage(img->header, sensor_msgs::image_encodings::MONO8, temp_image);
+        img_bridge.toImageMsg(decimatedImage_); // from cv_bridge to sensor_msgs::Image
+
+        pubDecimated_.publish(decimatedImage_); // ros::Publisher pub_img = node.advertise<sensor_msgs::Image>("topic", queuesize);
+      }
     }
-
     //
 
     if (init_state_.isInitialized() && !cv_img.empty())
