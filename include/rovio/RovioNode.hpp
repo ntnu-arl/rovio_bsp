@@ -160,6 +160,7 @@ public:
   ros::Publisher pubMarkers_; /**<Publisher: Ros line marker, indicating the depth uncertainty of a landmark.*/
   ros::Publisher pubExtrinsics_[mtState::nCam_];
   ros::Publisher pubImuBias_;
+  ros::Publisher pubDecimated_;
 
   // Ros Messages
   geometry_msgs::TransformStamped transformMsg_;
@@ -169,6 +170,7 @@ public:
   sensor_msgs::PointCloud2 patchMsg_;
   visualization_msgs::Marker markerMsg_;
   sensor_msgs::Imu imuBiasMsg_;
+  sensor_msgs::Image decimatedImage_;
   int msgSeq_;
 
   // Rovio outputs and coordinate transformations
@@ -279,6 +281,8 @@ public:
       pubPcl_ = nh_.advertise<sensor_msgs::PointCloud2>("rovio/pcl", 1);
       pubPatch_ = nh_.advertise<sensor_msgs::PointCloud2>("rovio/patch", 1);
       pubMarkers_ = nh_.advertise<visualization_msgs::Marker>("rovio/markers", 1);
+      pubDecimated_ = nh_.advertise<sensor_msgs::Image>("cam0/image_decimated", 1);
+      
       for (int camID = 0; camID < mtState::nCam_; camID++)
       {
         pubExtrinsics_[camID] = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("rovio/extrinsics" + std::to_string(camID), 1);
@@ -1167,6 +1171,21 @@ public:
         ROS_WARN_THROTTLE(5, "Histogram Equaliztion for 8-bit intensity images is turned on but input Image is not 8-bit");
     }
     //CUSTOMIZATION
+
+    // MAPLAB
+    if (resize_input_image_ || histogram_equalize_8bit_images_)
+    {
+      cv::Mat temp_image;
+      cv_img.convertTo(temp_image, CV_8UC1);
+
+      cv_bridge::CvImage img_bridge;
+
+      img_bridge = cv_bridge::CvImage(img->header, sensor_msgs::image_encodings::MONO8, temp_image);
+      img_bridge.toImageMsg(decimatedImage_); // from cv_bridge to sensor_msgs::Image
+      pubDecimated_.publish(decimatedImage_);       // ros::Publisher pub_img = node.advertise<sensor_msgs::Image>("topic", queuesize);
+    }
+
+    //
 
     if (init_state_.isInitialized() && !cv_img.empty())
     {
