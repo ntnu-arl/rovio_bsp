@@ -25,7 +25,7 @@
     <param name="clahe_grid_size" value="6"/>
 
     <!-- ROVIO ODOMETRY POST PROCESSING -->
-    <remap from="rovio/odometry" to="/rotio/odometry"/>
+    <!-- <remap from="rovio/odometry" to="/rotio/odometry"/> -->
   </node>
 
 </launch>

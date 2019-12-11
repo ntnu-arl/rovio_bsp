@@ -178,7 +178,7 @@ Prediction
     {
         g_x 0.0;                                X-Component of gravity vector [m^2/s]
         g_y 0.0;                                Y-Component of gravity vector [m^2/s]
-        g_z -9.92; -9.8754;                     Z-Component of gravity vector [m^2/s]
+        g_z -9.96; -9.8754 RENO;                Z-Component of gravity vector [m^2/s]
     }
     MotionDetection
     {
