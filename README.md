@@ -11,7 +11,7 @@ Please also have a look at the wiki: https://github.com/ethz-asl/rovio/wiki
 ### Install without opengl scene ###
 Dependencies:
 * ros
-* kindr (https://github.com/ANYbotics/kindr) | Tag: 0.01: https://github.com/ANYbotics/kindr/commit/bdca1acddc4e4c0f2e5638d196907e00e996c179
+* kindr (https://github.com/ethz-asl/kindr) [Ubuntu 18.04: (https://github.com/ANYbotics/kindr) | Tag: 0.0.1: https://github.com/ANYbotics/kindr/commit/bdca1acddc4e4c0f2e5638d196907e00e996c179] 
 * lightweight_filtering (as submodule, use "git submodule update --init --recursive")
 
 ```
