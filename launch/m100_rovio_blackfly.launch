@@ -19,7 +19,7 @@
   <node pkg="rovio" type="rovio_node" name="rovio" output="screen" clear_params="true">
     <param name="filter_config" value="$(arg filter_config_file)"/>
     <remap from="imu0" to="$(arg imu_topic)"/>
-    <param name="camera0_config" value="$(arg camera_config_file"/>
+    <param name="camera0_config" value="$(arg camera_config_file)"/>
     <remap from="cam0/image_raw" to="$(arg camera_topic)"/>
     <param name="cam0_offset" value="$(arg camera_time_offset)"/> # blackfly: timeshift[s](t_imu = t_cam + shift) 0.01215371276812396 
     <param name="resize_input_image" value="$(arg resize_input_image)"/>         # resize input image by resize_factor - CAMERA INTRINSICS NOT SCALED CORRECT CALIBRATION FILE MANUALLY
