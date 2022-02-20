@@ -54,6 +54,7 @@
 #include <std_srvs/Empty.h>
 #include <tf/transform_broadcaster.h>
 #include <visualization_msgs/Marker.h>
+#include <image_transport/image_transport.h>
 
 #include <rovio/SrvResetToPose.h>
 #include "rovio/RovioFilter.hpp"
@@ -145,6 +146,7 @@ public:
   // Nodes, Subscriber, Publishers
   ros::NodeHandle nh_;
   ros::NodeHandle nh_private_;
+  image_transport::ImageTransport it_;
   ros::Subscriber subImu_;
   ros::Subscriber subImg0_;
   ros::Subscriber subImg1_;
@@ -161,6 +163,8 @@ public:
   ros::Publisher pubExtrinsics_[mtState::nCam_];
   ros::Publisher pubImuBias_;
   ros::Publisher pubDecimated_;
+  image_transport::Publisher image_pub_;
+  
 
   // Ros Messages
   geometry_msgs::TransformStamped transformMsg_;
@@ -229,7 +233,7 @@ public:
   /** \brief Constructor
    */
   RovioNode(ros::NodeHandle &nh, ros::NodeHandle &nh_private, std::shared_ptr<mtFilter> mpFilter)
-      : nh_(nh), nh_private_(nh_private), mpFilter_(mpFilter), transformFeatureOutputCT_(&mpFilter->multiCamera_), landmarkOutputImuCT_(&mpFilter->multiCamera_),
+      : nh_(nh), nh_private_(nh_private), it_(nh_private_), mpFilter_(mpFilter), transformFeatureOutputCT_(&mpFilter->multiCamera_), landmarkOutputImuCT_(&mpFilter->multiCamera_),
         cameraOutputCov_((int)(mtOutput::D_), (int)(mtOutput::D_)), featureOutputCov_((int)(FeatureOutput::D_), (int)(FeatureOutput::D_)), landmarkOutputCov_(3, 3),
         featureOutputReadableCov_((int)(FeatureOutputReadable::D_), (int)(FeatureOutputReadable::D_))
   {
@@ -282,6 +286,7 @@ public:
       pubPatch_ = nh_.advertise<sensor_msgs::PointCloud2>("rovio/patch", 1);
       pubMarkers_ = nh_.advertise<visualization_msgs::Marker>("rovio/markers", 1);
       pubDecimated_ = nh_.advertise<sensor_msgs::Image>("cam0/image_decimated", 1);
+      image_pub_ = it_.advertise("feature_tracking_image", 1);
       
       for (int camID = 0; camID < mtState::nCam_; camID++)
       {
@@ -1320,6 +1325,13 @@ public:
       { // Publish only if something changed
         for (int i = 0; i < mtState::nCam_; i++)
         {
+          if (!mpFilter_->safe_.img_[i].empty() && mpImgUpdate_->publishVisualisedFrame_)
+          {
+            std_msgs::Header header;
+            header.seq = msgSeq_;
+            header.stamp = ros::Time(mpFilter_->safe_.t_);
+            image_pub_.publish(cv_bridge::CvImage(header, "bgr8", mpFilter_->safe_.img_[i]).toImageMsg());
+          }
           if (!mpFilter_->safe_.img_[i].empty() && mpImgUpdate_->doFrameVisualisation_)
           {
             cv::imshow("Tracker" + std::to_string(i), mpFilter_->safe_.img_[i]);

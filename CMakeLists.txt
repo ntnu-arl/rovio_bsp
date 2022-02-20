@@ -75,6 +75,7 @@ find_package(catkin REQUIRED COMPONENTS
 	std_msgs
 	tf
 	rosbag
+	image_transport
 	eigen_conversions	#BSP_extra
 	octomap_ros		#BSP_extra
 	octomap_msgs		#BSP_extra
@@ -111,6 +112,7 @@ catkin_package(
 	std_msgs
 	tf
 	rosbag
+	image_transport
   yaml_cpp_catkin
 	eigen_conversions	#BSP_extra
 	octomap_ros		#BSP_extra
