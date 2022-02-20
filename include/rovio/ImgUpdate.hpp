@@ -228,6 +228,7 @@ public:
   bool useDirectMethod_; /**<If true, the innovation term is based directly on pixel intensity errors.
                               If false, the reprojection error is used for the innovation term.*/
   bool doFrameVisualisation_;
+  bool publishVisualisedFrame_;
   bool visualizePatches_;
   bool verbose_;
   bool removeNegativeFeatureAfterUpdate_;
@@ -363,6 +364,7 @@ public:
     boolRegister_.registerScalar("MotionDetection.isEnabled", doVisualMotionDetection_);
     boolRegister_.registerScalar("useDirectMethod", useDirectMethod_);
     boolRegister_.registerScalar("doFrameVisualisation", doFrameVisualisation_);
+    boolRegister_.registerScalar("publishVisualisedFrame", publishVisualisedFrame_);
     boolRegister_.registerScalar("visualizePatches", visualizePatches_);
     boolRegister_.registerScalar("removeNegativeFeatureAfterUpdate", removeNegativeFeatureAfterUpdate_);
     boolRegister_.registerScalar("useCrossCameraMeasurements", useCrossCameraMeasurements_);
