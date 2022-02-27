@@ -9,6 +9,9 @@
   /rotio/odometry
   /tf"/> 
 
+  # Static TF Publishers
+  <node pkg="tf" type="static_transform_publisher" name="tf_imu_lidar" args="-0.112588076376 0.00132018890783 0.0930352633261 -0.00573793472098 -0.0147085760206 -0.00617589950126 imu velodyne_sensor 10"/>
+
   <!-- Charlie - Tau2-VN100 -->
   <node pkg="rovio" type="rovio_node" name="rovio" output="screen" clear_params="true">
     <param name="filter_config" value="$(find rovio)/cfg/charlie_tau2/charlie_tau2.info"/>

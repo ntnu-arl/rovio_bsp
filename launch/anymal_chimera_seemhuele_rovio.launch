@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?> 
+<!-- Sample ROVIO Node Launch File with Options -->
+<launch>
+  <param name="/use_sim_time" value="true" />
+  <node pkg="tf" type="static_transform_publisher" name="robio_imu_to_lidar" args=" -0.0053030000 -0.0373400000 -0.0633190000 0 0 0 1 rovio_imu lidar_sensor 100"/>
+  <node pkg="rovio" type="rovio_node" name="rovio" output="screen" clear_params="true">
+    <!-- Config File -->
+    <param name="filter_config" value="$(find rovio)/cfg/anymal_chimera/anymal_chimera.info"/>
+  
+    <!-- Camera Calibration YAML File -->
+    <param name="camera0_config" value="$(find rovio)/cfg/anymal_chimera/anymal_chimera.yaml"/>
+    <param name="imu_frame" value="rovio_imu"/>
+    
+    <!-- Input Topics -->
+    <remap from="imu0" to="/alphasense_driver_ros/imu"/>
+    <remap from="cam0/image_raw" to="/alphasense_driver_ros/cam0"/>
+
+    <!-- Camera-IMU time-offset -->
+    <param name="cam0_offset" value="0.0018008003299918548"/>
+
+    <!-- Use LiDAR Depth for Feature Depth Initialization -->
+    <!-- <param name="camera_frame_name" value="camera0"/>
+    <param name="lidar_frame_name" value="os_sensor"/>
+    <remap from="lidar/pcl" to="/os_cloud_node/points"/> -->
+
+  </node>
+</launch>
+  

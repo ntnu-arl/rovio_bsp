@@ -9,14 +9,18 @@
   /rotio/odometry
   /tf"/> 
 
+
+  # Static TF Publishers
+  <node pkg="tf" type="static_transform_publisher" name="tf_imu_lidar" args="-0.112588076376 0.00132018890783 0.0930352633261 -0.00573793472098 -0.0147085760206 -0.00617589950126 imu velodyne_sensor 10"/>
+
   <node pkg="rovio" type="rovio_node" name="rovio" output="screen" clear_params="true">
     <param name="filter_config" value="$(find rovio)/cfg/alpha_blackfly/alpha_blackfly.info"/>
     <remap from="imu0" to="/vn100/imu"/>
 
     <!-- Alpha - Blackfly-VN100 -->
     <param name="camera0_config" value="$(find rovio)/cfg/alpha_blackfly/alpha_blackfly.yaml"/>
-    <remap from="cam0/image_raw" to="/camera/image_raw"/>
-    <!-- <remap from="cam0/image_raw" to="/camera/image_mono"/> -->
+    <!-- <remap from="cam0/image_raw" to="/camera/image_raw"/> -->
+    <remap from="cam0/image_raw" to="/camera/image_mono"/>
     <param name="cam0_offset" value="0.01215371276812396"/> # blackfly: timeshift[s](t_imu = t_cam + shift) 0.01215371276812396 
     <param name="resize_input_image" value="true"/>         # resize input image by resize_factor - CAMERA INTRINSICS NOT SCALED CORRECT CALIBRATION FILE MANUALLY
     <param name="resize_factor" value="0.5"/>               # (img.cols x resize_factor) X (img.rows x resize_factor)
